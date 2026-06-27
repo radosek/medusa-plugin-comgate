@@ -1,0 +1,23 @@
+{
+	"compilerOptions": {
+		"target": "es2021",
+		"lib": ["es2021"],
+		"module": "Node16",
+		"moduleResolution": "Node16",
+		"outDir": "./dist",
+		"rootDir": "./src",
+		"declaration": true,
+		"sourceMap": true,
+		"esModuleInterop": true,
+		"emitDecoratorMetadata": true,
+		"experimentalDecorators": true,
+		"strict": true,
+		"isolatedModules": true,
+		"strictNullChecks": true,
+		"noImplicitReturns": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true
+	},
+	"include": ["src"],
+	"exclude": ["dist", "node_modules", "src/**/__tests__", "src/**/*.spec.ts"]
+}

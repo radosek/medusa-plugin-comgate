@@ -1,0 +1,14 @@
+dist
+.medusa
+node_modules
+.DS_store
+yarn.lock
+
+# secrets — never commit
+.env
+.env.*
+!.env.example
+*.local
+
+*.tsbuildinfo
+.playwright-mcp/
