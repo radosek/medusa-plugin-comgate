@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./assets/comgate-logo.png" alt="Comgate" width="96" height="96" />
+</p>
+
 # medusa-payment-comgate-v2
 
 [Comgate](https://www.comgate.cz/) payment provider for **Medusa v2**. Comgate is a Czech payment gateway (cards, Apple Pay / Google Pay, Czech & Slovak bank buttons, Twisto, etc).
