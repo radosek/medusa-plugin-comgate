@@ -1,10 +1,12 @@
 <p align="center">
-  <img src="./assets/comgate-logo.png" alt="Comgate" width="96" height="96" />
+  <img src="https://raw.githubusercontent.com/radosek/medusa-payment-comgate-v2/main/assets/comgate-logo.png" alt="Comgate" width="280" />
 </p>
 
 # medusa-payment-comgate-v2
 
 [Comgate](https://www.comgate.cz/) payment provider for **Medusa v2**. Comgate is a Czech payment gateway (cards, Apple Pay / Google Pay, Czech & Slovak bank buttons, Twisto, etc).
+
+> **Disclaimer:** This is an unofficial, community-built integration. It is **not affiliated with, endorsed by, or maintained by Comgate Payments, a.s.** "Comgate" and the Comgate logo are trademarks of their respective owner, used here only to identify the payment gateway this plugin integrates with.
 
 [Comgate API docs](https://apidoc.comgate.cz/en/) | [Medusa Payment Module](https://docs.medusajs.com/resources/commerce-modules/payment)
 
@@ -165,3 +167,5 @@ Once published with those keywords, the plugin is picked up automatically by the
 ## License
 
 MIT
+
+This project is an independent, unofficial integration and is not affiliated with or endorsed by Comgate Payments, a.s. All Comgate trademarks and logos are the property of their respective owner.
