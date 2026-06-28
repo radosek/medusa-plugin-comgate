@@ -1,6 +1,6 @@
 {
 	"name": "medusa-payment-comgate-v2",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Comgate payment provider for Medusa v2",
 	"author": "Radoš",
 	"license": "MIT",

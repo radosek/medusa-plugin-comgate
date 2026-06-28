@@ -69,8 +69,8 @@ module.exports = defineConfig({
 | `country`        | no       | `ALL`   | Payer country (ISO 3166-1). |
 | `label`          | no       | `Order` | Statement label, 1–16 chars. |
 | `method`         | no       | `ALL`   | Payment method, or `ALL` to let the payer choose. |
-| `url_paid` / `url_cancelled` / `url_pending` | no | — | Override per-merchant return URLs. |
-| `base_url`       | no       | `https://payments.comgate.cz/v1.0` | API base url. |
+| `url_paid` / `url_cancelled` / `url_pending` | no | — | Return URLs. See note below — bake your own order id into them. |
+| `base_url`       | no       | `https://payments.comgate.cz` | API base url (the `/v2.0` version prefix is part of each path). |
 
 ## Pre-authorization
 
@@ -117,15 +117,15 @@ In the [Client Portal](https://portal.comgate.cz/) → *Integrace → Nastavení
 
 ### Storefront redirect URLs (Medusa Next.js starter)
 
-Comgate substitutes `${id}` (transId) and `${refId}` (Medusa payment session id). Example for the official starter:
+Comgate v2.0 uses each return URL **verbatim** — it does **not** append `transId`/`refId` query params, and `${id}`/`${refId}` placeholders are **not** substituted (verified against a real paid order). The return page can only know which order it is if you bake the identifier into the URL yourself:
 
 ```
-Paid:      https://<storefront>/${countryCode}/order/confirmed?refId=${refId}
+Paid:      https://<storefront>/${countryCode}/order/confirmed?refId=<order-id>
 Cancelled: https://<storefront>/${countryCode}/cart?payment=cancelled
-Pending:   https://<storefront>/${countryCode}/order/pending?id=${id}
+Pending:   https://<storefront>/${countryCode}/order/pending?refId=<order-id>
 ```
 
-Map these to your actual routes. The storefront should still re-query the order/payment status server-side before showing "paid".
+Set these per payment via the `url_paid` / `url_cancelled` / `url_pending` options (or per-merchant in the portal). The return page reads your baked-in id and looks the order up from it. The redirect is non-authoritative regardless — the storefront must re-query order/payment status server-side before showing "paid".
 
 > **Web/Mobile Checkout SDK** checkboxes: leave **off**. This provider uses Comgate's hosted redirect flow, not the embedded checkout SDKs.
 

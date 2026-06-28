@@ -43,8 +43,17 @@ export interface ComgateOptions {
 	 */
 	method?: string
 	/**
-	 * Optional return URLs. Comgate also has these configured per-merchant in the
-	 * portal; set them here to override per integration.
+	 * Optional return URLs the payer is redirected to after paying, cancelling, or
+	 * leaving the payment pending. Also configurable per-merchant in the portal; set
+	 * them here to override per integration.
+	 *
+	 * Comgate v2.0 uses each URL **verbatim** — it does NOT append `transId`/`refId`
+	 * query params and does NOT substitute `${id}`/`${refId}` placeholders. The
+	 * return page therefore cannot read the identifier off the URL unless you put it
+	 * there yourself. Bake your own order identifier into the URL, e.g.
+	 * `https://shop.com/checkout/return?refId=123`, and look the order up from that.
+	 * The redirect is not authoritative regardless — confirm payment via the webhook
+	 * or by re-querying the payment status server-side.
 	 */
 	url_paid?: string
 	url_cancelled?: string
@@ -90,8 +99,9 @@ export interface ComgatePaymentData extends Record<string, unknown> {
 
 /**
  * Body for `POST /v2.0/payment.json`. Auth is the Basic header (no merchant /
- * secret in the body). The v2.0 API has no `prepareOnly` field — this endpoint
- * is always the background create that returns a `redirect` URL.
+ * secret in the body). v2.0 supports `prepareOnly`, but this provider omits it and
+ * always does the background create that returns a `redirect` URL — that flow works
+ * without it.
  */
 export interface CreatePaymentRequest {
 	/** Amount in the minor currency unit (e.g. cents / haléře). */
