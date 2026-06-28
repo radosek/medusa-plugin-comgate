@@ -117,15 +117,23 @@ In the [Client Portal](https://portal.comgate.cz/) → *Integrace → Nastavení
 
 ### Storefront redirect URLs (Medusa Next.js starter)
 
-Comgate v2.0 uses each return URL **verbatim** — it does **not** append `transId`/`refId` query params, and `${id}`/`${refId}` placeholders are **not** substituted (verified against a real paid order). The return page can only know which order it is if you bake the identifier into the URL yourself:
+The return page must know which order it is. Comgate supports `${id}` (Comgate transId) and `${refId}` (your reference) placeholders, **case-sensitive** — but only in the **Comgate client-portal** return-URL fields, where Comgate substitutes them at redirect time. The API `url_paid` / `url_cancelled` / `url_pending` request fields are used **verbatim** (no substitution, no params appended), so if you set the URLs via the API you must bake the identifier in yourself.
+
+Portal (recommended — Comgate substitutes the placeholders):
 
 ```
-Paid:      https://<storefront>/${countryCode}/order/confirmed?refId=<order-id>
-Cancelled: https://<storefront>/${countryCode}/cart?payment=cancelled
-Pending:   https://<storefront>/${countryCode}/order/pending?refId=<order-id>
+Paid:      https://<storefront>/${countryCode}/order/confirmed?state=paid&id=${id}&refId=${refId}
+Cancelled: https://<storefront>/${countryCode}/cart?state=cancelled&id=${id}&refId=${refId}
+Pending:   https://<storefront>/${countryCode}/order/pending?state=pending&id=${id}&refId=${refId}
 ```
 
-Set these per payment via the `url_paid` / `url_cancelled` / `url_pending` options (or per-merchant in the portal). The return page reads your baked-in id and looks the order up from it. The redirect is non-authoritative regardless — the storefront must re-query order/payment status server-side before showing "paid".
+API options (verbatim — bake in your own id):
+
+```
+url_paid: https://<storefront>/${countryCode}/order/confirmed?refId=<order-id>
+```
+
+`refId` is the Medusa payment session id. The return page reads it and looks the order up. The redirect is non-authoritative regardless — the storefront must re-query order/payment status server-side before showing "paid".
 
 > **Web/Mobile Checkout SDK** checkboxes: leave **off**. This provider uses Comgate's hosted redirect flow, not the embedded checkout SDKs.
 

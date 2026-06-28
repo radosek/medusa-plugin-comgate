@@ -47,13 +47,13 @@ export interface ComgateOptions {
 	 * leaving the payment pending. Also configurable per-merchant in the portal; set
 	 * them here to override per integration.
 	 *
-	 * Comgate v2.0 uses each URL **verbatim** — it does NOT append `transId`/`refId`
-	 * query params and does NOT substitute `${id}`/`${refId}` placeholders. The
-	 * return page therefore cannot read the identifier off the URL unless you put it
-	 * there yourself. Bake your own order identifier into the URL, e.g.
-	 * `https://shop.com/checkout/return?refId=123`, and look the order up from that.
-	 * The redirect is not authoritative regardless — confirm payment via the webhook
-	 * or by re-querying the payment status server-side.
+	 * When set via THIS API field, Comgate uses each URL **verbatim** — it does NOT
+	 * append `transId`/`refId` params and does NOT substitute placeholders, so bake
+	 * your own identifier in, e.g. `https://shop.com/checkout/return?refId=123`.
+	 * (The portal return-URL fields DO substitute `${id}`/`${refId}`, case-sensitive
+	 * — but those are configured in the Comgate portal, not here.) The return page
+	 * looks the order up from the baked-in id. The redirect is not authoritative
+	 * regardless — confirm payment via the webhook or by re-querying server-side.
 	 */
 	url_paid?: string
 	url_cancelled?: string
