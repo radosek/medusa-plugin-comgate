@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/radosek/medusa-payment-comgate-v2/main/assets/comgate-logo.png" alt="Comgate" width="280" />
+  <img src="https://raw.githubusercontent.com/radosek/medusa-plugin-comgate/main/assets/comgate-logo.png" alt="Comgate" width="280" />
 </p>
 
-# medusa-payment-comgate-v2
+# medusa-plugin-comgate
 
 [Comgate](https://www.comgate.cz/) payment provider for **Medusa v2**. Comgate is a Czech payment gateway (cards, Apple Pay / Google Pay, Czech & Slovak bank buttons, Twisto, etc).
 
@@ -20,7 +20,7 @@
 ## Install
 
 ```bash
-bun add medusa-payment-comgate-v2
+bun add medusa-plugin-comgate
 ```
 
 ## Configure
@@ -36,7 +36,7 @@ module.exports = defineConfig({
       options: {
         providers: [
           {
-            resolve: "medusa-payment-comgate-v2/providers/comgate",
+            resolve: "medusa-plugin-comgate/providers/comgate",
             id: "comgate",
             options: {
               merchant: process.env.COMGATE_MERCHANT,
@@ -78,8 +78,8 @@ To run both a direct-capture and a pre-auth provider, register the module twice 
 
 ```ts
 providers: [
-  { resolve: "medusa-payment-comgate-v2/providers/comgate", id: "comgate", options: { /* preauth: false */ } },
-  { resolve: "medusa-payment-comgate-v2/providers/comgate", id: "comgate-preauth", options: { preauth: true } },
+  { resolve: "medusa-plugin-comgate/providers/comgate", id: "comgate", options: { /* preauth: false */ } },
+  { resolve: "medusa-plugin-comgate/providers/comgate", id: "comgate-preauth", options: { preauth: true } },
 ]
 ```
 

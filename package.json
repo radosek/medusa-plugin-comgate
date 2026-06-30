@@ -1,16 +1,16 @@
 {
-	"name": "medusa-payment-comgate-v2",
-	"version": "0.1.2",
+	"name": "medusa-plugin-comgate",
+	"version": "0.2.0",
 	"description": "Comgate payment provider for Medusa v2",
 	"author": "Radoš",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/radosek/medusa-payment-comgate-v2.git"
+		"url": "git+https://github.com/radosek/medusa-plugin-comgate.git"
 	},
-	"homepage": "https://github.com/radosek/medusa-payment-comgate-v2#readme",
+	"homepage": "https://github.com/radosek/medusa-plugin-comgate#readme",
 	"bugs": {
-		"url": "https://github.com/radosek/medusa-payment-comgate-v2/issues"
+		"url": "https://github.com/radosek/medusa-plugin-comgate/issues"
 	},
 	"files": [
 		"dist",
