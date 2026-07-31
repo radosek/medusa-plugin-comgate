@@ -245,7 +245,20 @@ class ComgateProviderService extends AbstractPaymentProvider<ComgateOptions> {
 	 * (1250). Comgate uses the smallest currency unit for every currency.
 	 */
 	private toMinorUnits(amount: InitiatePaymentInput["amount"], _currency: string): number {
-		const value = typeof amount === "object" ? Number((amount as BigNumber).numeric) : Number(amount)
+		// `BigNumberInput` is a union: a plain number/string, a BigNumber instance
+		// (`.numeric`), or a raw `{ value, precision }` object — the Payment Module
+		// passes `refund.raw_amount` (the raw form) straight into `refundPayment`.
+		let value: number
+		if (amount != null && typeof amount === "object") {
+			const obj = amount as { numeric?: number; value?: string | number }
+			value = Number(obj.numeric ?? obj.value ?? Number.NaN)
+		} else {
+			value = Number(amount)
+		}
+
+		if (!Number.isFinite(value)) {
+			throw new MedusaError(MedusaError.Types.INVALID_DATA, `Comgate received a non-numeric amount: ${JSON.stringify(amount)}`)
+		}
 		return Math.round(value * 100)
 	}
 }

@@ -1,3 +1,4 @@
+import { BigNumber } from "@medusajs/framework/utils"
 import ComgateProviderService from "../service"
 import type { ComgateOptions } from "../types"
 
@@ -40,7 +41,7 @@ describe("getWebhookActionAndData", () => {
 		const res = await svc.getWebhookActionAndData({ data: { ...baseNote, status: "PAID" } } as any)
 		expect(res.action).toBe("captured")
 		expect(res.data?.session_id).toBe("ps_123")
-		expect(res.data?.amount.numeric).toBe(10000)
+		expect((res.data?.amount as BigNumber).numeric).toBe(10000)
 	})
 
 	it("maps AUTHORIZED -> authorized", async () => {
@@ -188,6 +189,44 @@ describe("refundPayment", () => {
 		const refund = jest.spyOn((svc as any).client_, "refund").mockResolvedValue({ code: 0, message: "OK" })
 		await svc.refundPayment({ amount: 25, data: { transId: "T", curr: "CZK", refId: "ps_9" } } as any)
 		expect(refund).toHaveBeenCalledWith("T", 2500, true, "ps_9")
+	})
+
+	it("refunds when Medusa passes a raw BigNumber amount ({ value, precision })", async () => {
+		// The Payment Module hands `refund.raw_amount` straight to refundPayment;
+		// it has no `.numeric`, so a naive Number(amount.numeric) yields NaN.
+		const svc = makeService()
+		const refund = jest.spyOn((svc as any).client_, "refund").mockResolvedValue({ code: 0, message: "OK" })
+		await svc.refundPayment({
+			amount: { value: "100.50000000000000000", precision: 20 },
+			data: { transId: "T", curr: "CZK", refId: "ps_9" },
+		} as any)
+		expect(refund).toHaveBeenCalledWith("T", 10050, true, "ps_9")
+	})
+
+	it("refunds when the amount is a BigNumber instance", async () => {
+		const svc = makeService()
+		const refund = jest.spyOn((svc as any).client_, "refund").mockResolvedValue({ code: 0, message: "OK" })
+		await svc.refundPayment({
+			amount: new BigNumber(100.5),
+			data: { transId: "T", curr: "CZK", refId: "ps_9" },
+		} as any)
+		expect(refund).toHaveBeenCalledWith("T", 10050, true, "ps_9")
+	})
+
+	it("refunds when the amount is a numeric string", async () => {
+		const svc = makeService()
+		const refund = jest.spyOn((svc as any).client_, "refund").mockResolvedValue({ code: 0, message: "OK" })
+		await svc.refundPayment({ amount: "25.5", data: { transId: "T", curr: "CZK" } } as any)
+		expect(refund).toHaveBeenCalledWith("T", 2550, true, undefined)
+	})
+
+	it("throws instead of sending NaN for an unusable amount", async () => {
+		const svc = makeService()
+		const refund = jest.spyOn((svc as any).client_, "refund").mockResolvedValue({ code: 0, message: "OK" })
+		await expect(
+			svc.refundPayment({ amount: {}, data: { transId: "T", curr: "CZK" } } as any),
+		).rejects.toThrow(/non-numeric amount/)
+		expect(refund).not.toHaveBeenCalled()
 	})
 
 	it("propagates a Comgate refund error", async () => {
