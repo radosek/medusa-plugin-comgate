@@ -64,9 +64,7 @@ describe("status / cancel / preauth URLs", () => {
 		const fetchMock = mockFetch(200, { code: 0, message: "OK", status: "PAID" })
 		;(global as any).fetch = fetchMock
 		await new ComgateClient(OPTS).status("AB12-CD34")
-		expect(fetchMock.mock.calls[0][0]).toBe(
-			"https://payments.comgate.cz/v2.0/payment/transId/AB12-CD34.json",
-		)
+		expect(fetchMock.mock.calls[0][0]).toBe("https://payments.comgate.cz/v2.0/payment/transId/AB12-CD34.json")
 		expect(fetchMock.mock.calls[0][1].method).toBe("GET")
 	})
 
@@ -74,9 +72,7 @@ describe("status / cancel / preauth URLs", () => {
 		const fetchMock = mockFetch(200, { code: 0, message: "OK" })
 		;(global as any).fetch = fetchMock
 		await new ComgateClient(OPTS).cancel("AB12-CD34")
-		expect(fetchMock.mock.calls[0][0]).toBe(
-			"https://payments.comgate.cz/v2.0/payment/transId/AB12-CD34.json",
-		)
+		expect(fetchMock.mock.calls[0][0]).toBe("https://payments.comgate.cz/v2.0/payment/transId/AB12-CD34.json")
 		expect(fetchMock.mock.calls[0][1].method).toBe("DELETE")
 	})
 
@@ -84,9 +80,7 @@ describe("status / cancel / preauth URLs", () => {
 		const fetchMock = mockFetch(200, { code: 0, message: "OK" })
 		;(global as any).fetch = fetchMock
 		await new ComgateClient(OPTS).capturePreauth("AB12-CD34", 500)
-		expect(fetchMock.mock.calls[0][0]).toBe(
-			"https://payments.comgate.cz/v2.0/preauth/transId/AB12-CD34.json",
-		)
+		expect(fetchMock.mock.calls[0][0]).toBe("https://payments.comgate.cz/v2.0/preauth/transId/AB12-CD34.json")
 		expect(fetchMock.mock.calls[0][1].method).toBe("PUT")
 		expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ amount: 500 })
 	})
@@ -95,9 +89,7 @@ describe("status / cancel / preauth URLs", () => {
 		const fetchMock = mockFetch(200, { code: 0, message: "OK" })
 		;(global as any).fetch = fetchMock
 		await new ComgateClient(OPTS).cancelPreauth("AB12-CD34")
-		expect(fetchMock.mock.calls[0][0]).toBe(
-			"https://payments.comgate.cz/v2.0/preauth/transId/AB12-CD34.json",
-		)
+		expect(fetchMock.mock.calls[0][0]).toBe("https://payments.comgate.cz/v2.0/preauth/transId/AB12-CD34.json")
 		expect(fetchMock.mock.calls[0][1].method).toBe("DELETE")
 	})
 })

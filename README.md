@@ -150,10 +150,17 @@ https://<your-backend>/hooks/payment/comgate_comgate
 ## Development
 
 ```bash
-bun install
+bun install        # also installs the git hooks (lefthook)
 bun run build      # tsc -> dist
 bun run test       # jest unit tests (mocked fetch)
+bun run check      # format + lint + typecheck + test (what CI runs)
 ```
+
+Formatting and linting use [oxc](https://oxc.rs/): `bun run format` writes,
+`bun run lint` checks. `lefthook` runs format/lint checks on staged files
+pre-commit and typecheck/test pre-push — the hooks only *check*, they never
+rewrite files mid-commit. If the format check fails, run `bun run format` and
+re-stage.
 
 Live smoke test against the Comgate v2.0 test API (no Medusa backend needed):
 

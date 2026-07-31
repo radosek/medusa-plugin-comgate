@@ -5,10 +5,12 @@ import type { ComgateOptions } from "../types"
 const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as any
 
 function makeService(options: Partial<ComgateOptions> = {}) {
-	return new ComgateProviderService(
-		{ logger },
-		{ merchant: "123456", secret: "topsecret", test: true, ...options } as ComgateOptions,
-	)
+	return new ComgateProviderService({ logger }, {
+		merchant: "123456",
+		secret: "topsecret",
+		test: true,
+		...options,
+	} as ComgateOptions)
 }
 
 describe("ComgateProviderService.validateOptions", () => {
@@ -41,7 +43,7 @@ describe("getWebhookActionAndData", () => {
 		const res = await svc.getWebhookActionAndData({ data: { ...baseNote, status: "PAID" } } as any)
 		expect(res.action).toBe("captured")
 		expect(res.data?.session_id).toBe("ps_123")
-		expect((res.data?.amount as BigNumber).numeric).toBe(10000)
+		expect((res.data!.amount as BigNumber).numeric).toBe(10000)
 	})
 
 	it("maps AUTHORIZED -> authorized", async () => {
@@ -176,7 +178,9 @@ describe("getPaymentStatus mapping", () => {
 
 	it("authorizePayment returns the mapped status and data", async () => {
 		const svc = makeService()
-		jest.spyOn((svc as any).client_, "status").mockResolvedValue({ code: 0, message: "OK", status: "AUTHORIZED" })
+		jest
+			.spyOn((svc as any).client_, "status")
+			.mockResolvedValue({ code: 0, message: "OK", status: "AUTHORIZED" })
 		const res = await svc.authorizePayment({ data: { transId: "T" } } as any)
 		expect(res.status).toBe("authorized")
 		expect((res.data as any).transId).toBe("T")
