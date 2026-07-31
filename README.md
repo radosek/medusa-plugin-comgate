@@ -41,8 +41,9 @@ module.exports = defineConfig({
             options: {
               merchant: process.env.COMGATE_MERCHANT,
               secret: process.env.COMGATE_SECRET,
-              // "true" = sandbox. Any other value (incl. "1") = PRODUCTION.
-              test: process.env.COMGATE_TEST === "true",
+              // Fail safe: only an explicit "false"/"0" switches to production,
+              // so a typo or an unset var stays in the sandbox.
+              test: !["false", "0"].includes((process.env.COMGATE_TEST ?? "").toLowerCase()),
               // optional:
               // preauth: false,
               // lang: "cs",

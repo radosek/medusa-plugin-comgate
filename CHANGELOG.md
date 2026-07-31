@@ -8,8 +8,9 @@
   (number, string, `BigNumber`, raw) are now handled, and an unusable amount throws
   instead of silently sending a bad request.
 - Fix: `.env.example` shipped `COMGATE_TEST=1`, but the documented config checks
-  `=== "true"` — that combination silently ran **production** payments. Both now use
-  `true`.
+  `=== "true"` — that combination silently ran **production** payments. The documented
+  expression now fails safe: only an explicit `false`/`0` selects production, matching
+  the provider's own sandbox default.
 - Tests are typechecked again via `tsconfig.test.json` (`bun run typecheck`), fixing
   missing `jest`/`node` types in editors. Build output still excludes tests.
 - Bump Medusa dev dependencies to 2.18.0 (`peerDependencies` stays `2.x`).
