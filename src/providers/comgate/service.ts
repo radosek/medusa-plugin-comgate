@@ -88,7 +88,19 @@ class ComgateProviderService extends AbstractPaymentProvider<ComgateOptions> {
 		const email =
 			(context?.customer?.email as string) ?? (input.data?.email as string) ?? "noreply@example.com"
 		const label = (this.options_.label ?? "Order").slice(0, 16)
-		const refId = (input.data?.session_id as string) ?? (context?.idempotency_key as string) ?? label
+
+		// The webhook resolves the Medusa payment session by `refId`, so it has to be
+		// unique per session. The Payment Module always injects `session_id`; the
+		// idempotency key is a per-session fallback. Never fall back to `label` — that
+		// is static config, so every payment would share one refId and none of them
+		// could be reconciled.
+		const refId = (input.data?.session_id as string) ?? (context?.idempotency_key as string)
+		if (!refId) {
+			throw new MedusaError(
+				MedusaError.Types.INVALID_DATA,
+				"Comgate cannot create a payment without a session id: the payment could not be matched to its webhook.",
+			)
+		}
 
 		const res = await this.client_.create({
 			price: this.toMinorUnits(amount, currency_code),

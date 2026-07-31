@@ -1,6 +1,6 @@
 {
 	"name": "medusa-plugin-comgate",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"description": "Comgate payment provider for Medusa v2",
 	"keywords": [
 		"comgate",

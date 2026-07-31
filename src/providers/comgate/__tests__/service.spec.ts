@@ -146,6 +146,30 @@ describe("initiatePayment", () => {
 		expect(arg.price).toBe(100) // 1 EUR -> 100 cents
 	})
 
+	it("falls back to the idempotency key when session_id is absent", async () => {
+		const svc = makeService()
+		const create = jest
+			.spyOn((svc as any).client_, "create")
+			.mockResolvedValue({ code: 0, message: "OK", transId: "T5", redirect: "r" })
+		await svc.initiatePayment({
+			amount: 1,
+			currency_code: "CZK",
+			context: { idempotency_key: "idem_1" },
+		} as any)
+		expect((create.mock.calls[0][0] as any).refId).toBe("idem_1")
+	})
+
+	it("refuses to create a payment with no session id rather than reusing the label", async () => {
+		// A static label as refId would be shared by every payment, so none of them
+		// could be matched to their webhook.
+		const svc = makeService({ label: "Shop" })
+		const create = jest.spyOn((svc as any).client_, "create")
+		await expect(svc.initiatePayment({ amount: 1, currency_code: "CZK" } as any)).rejects.toThrow(
+			/without a session id/,
+		)
+		expect(create).not.toHaveBeenCalled()
+	})
+
 	it("sends preauth flag when the provider is in preauth mode", async () => {
 		const svc = makeService({ preauth: true })
 		const create = jest
