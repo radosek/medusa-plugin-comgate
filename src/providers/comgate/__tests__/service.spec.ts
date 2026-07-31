@@ -1,5 +1,4 @@
 import { BigNumber } from "@medusajs/framework/utils"
-import BigNumberJS from "bignumber.js"
 import ComgateProviderService from "../service"
 import type { ComgateOptions } from "../types"
 
@@ -214,13 +213,17 @@ describe("refundPayment", () => {
 		expect(refund).toHaveBeenCalledWith("T", 10050, true, "ps_9")
 	})
 
-	it("refunds when the amount is a BigNumberJS instance", async () => {
-		// BigNumberJS has neither `.numeric` nor `.value`; only Medusa's BigNumber
-		// normalises it.
+	it("refunds when the amount is a raw BigNumberJS instance", async () => {
+		// `BigNumberInput` also admits a bignumber.js instance, which has neither
+		// `.numeric` nor `.value` — reached here via BigNumber's own `bigNumber`
+		// property so the test needs no direct bignumber.js dependency.
 		const svc = makeService()
+		const bigNumberJs = new BigNumber(100.5).bigNumber
+		expect((bigNumberJs as any).numeric).toBeUndefined()
+
 		const refund = jest.spyOn((svc as any).client_, "refund").mockResolvedValue({ code: 0, message: "OK" })
 		await svc.refundPayment({
-			amount: new BigNumberJS("100.5"),
+			amount: bigNumberJs,
 			data: { transId: "T", curr: "CZK", refId: "ps_9" },
 		} as any)
 		expect(refund).toHaveBeenCalledWith("T", 10050, true, "ps_9")
