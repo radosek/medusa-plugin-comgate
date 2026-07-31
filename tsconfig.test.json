@@ -1,0 +1,19 @@
+{
+	// Typecheck-only project: covers tests and scripts, which tsconfig.json
+	// excludes so they stay out of the published build.
+	//
+	// This never emits. `rootDir` is widened to the repo root so `scripts/` can be
+	// included, which means emitting here would write to dist/src/... and break the
+	// `exports` map — so `outDir` is pointed at a throwaway directory as a
+	// belt-and-braces guard should `noEmit` ever be removed. Build with
+	// tsconfig.json, never this file.
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"types": ["jest", "node"],
+		"noEmit": true,
+		"rootDir": ".",
+		"outDir": "./node_modules/.cache/tsc-typecheck"
+	},
+	"include": ["src", "scripts"],
+	"exclude": ["dist", "node_modules"]
+}

@@ -41,7 +41,9 @@ module.exports = defineConfig({
             options: {
               merchant: process.env.COMGATE_MERCHANT,
               secret: process.env.COMGATE_SECRET,
-              test: process.env.COMGATE_TEST === "true",
+              // Fail safe: only an explicit "false"/"0" switches to production,
+              // so a typo or an unset var stays in the sandbox.
+              test: !["false", "0"].includes((process.env.COMGATE_TEST ?? "").toLowerCase()),
               // optional:
               // preauth: false,
               // lang: "cs",
@@ -160,17 +162,6 @@ COMGATE_MERCHANT=xxxx COMGATE_SECRET=xxxx bun run smoke
 ```
 
 It creates a test payment and prints the `redirect` URL — open it and pay with a Comgate test card to see the status flip to `PAID`. Your IP must be allowed on the shop link (portal → *Povolené IP adresy* / *Povolit všechny IP*).
-
-## Publishing to npm / Medusa integrations page
-
-This is packaged as a Medusa v2 plugin. To list it for free on the [Medusa integrations page](https://medusajs.com/integrations/), the `package.json` already includes the required keywords (`medusa-v2`, `medusa-plugin-integration`, `medusa-plugin-payment`).
-
-```bash
-bun run plugin:build   # medusa plugin:build -> .medusa/server
-npm publish            # public package
-```
-
-Once published with those keywords, the plugin is picked up automatically by the Medusa integrations listing.
 
 ## License
 

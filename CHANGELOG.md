@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.2.1
+
+- **Fix: refunds sent an invalid amount to Comgate.** The Payment Module passes
+  `refund.raw_amount` (a raw `{ value, precision }` object) to `refundPayment`. That
+  shape has no `.numeric`, so the amount became `NaN` and every admin-initiated refund
+  sent a malformed request. Amounts are now normalised through Medusa's own
+  `BigNumber`, which handles every `BigNumberInput` shape (number, string,
+  `BigNumber`, bignumber.js instance, raw object), and an unusable amount throws
+  instead of silently sending a bad request.
+- Fix: `.env.example` shipped `COMGATE_TEST=1`, but the documented config checks
+  `=== "true"` — that combination silently ran **production** payments. The documented
+  expression now fails safe: only an explicit `false`/`0` selects production, matching
+  the provider's own sandbox default.
+- Tests and `scripts/` are typechecked again via `tsconfig.test.json`
+  (`bun run typecheck`), fixing missing `jest`/`node` types in editors. Build output
+  still excludes tests.
+- Added tests covering the consumer-facing contract — the `exports` subpath, the
+  `.medusa/server` build output, the `2.x` peer range, the provider identifier and the
+  payment-provider methods Medusa calls by name — so a breaking change to any of them
+  fails here rather than at a merchant's boot.
+- `npm publish` is now gated behind the typecheck, test and plugin build.
+- Bump Medusa dev dependencies to 2.18.0. `peerDependencies` stays `2.x`, so this
+  installs on any Medusa 2.x host.
+
+## 0.2.0
+
+- **Renamed the package** from `medusa-payment-comgate-v2` to `medusa-plugin-comgate`,
+  to match the Medusa Integrations Directory convention (`medusa-plugin-[name]`). The
+  GitHub repository was renamed to match.
+- No functional changes. Update the dependency name in `package.json`; the provider
+  `resolve` path changes to `medusa-plugin-comgate/providers/comgate`, and the
+  resolved provider id (`pp_comgate_comgate`) is unchanged.
+
+> Versions below were published under the old `medusa-payment-comgate-v2` package name.
+
+## 0.1.2
+
+- Docs: correct the return-URL placeholder behaviour. `${id}` / `${refId}` are
+  substituted only in the Comgate client-portal return-URL fields; the API
+  `url_paid` / `url_cancelled` / `url_pending` options are used verbatim, so an
+  identifier has to be baked into those URLs by hand.
+
+## 0.1.1
+
+- Docs: document that Comgate uses the API return URLs verbatim, and correct the
+  documented `base_url` default.
+- Docs: add the Comgate logo and wordmark to the README, plus a non-affiliation
+  disclaimer.
+
 ## 0.1.0
 
 - Initial release: Comgate payment provider for **Medusa v2** using the Comgate REST v2.0 JSON API.
