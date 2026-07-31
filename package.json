@@ -2,15 +2,25 @@
 	"name": "medusa-plugin-comgate",
 	"version": "0.2.1",
 	"description": "Comgate payment provider for Medusa v2",
-	"author": "Radoš",
-	"license": "MIT",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/radosek/medusa-plugin-comgate.git"
-	},
+	"keywords": [
+		"comgate",
+		"czech",
+		"medusa",
+		"medusa-plugin",
+		"medusa-plugin-integration",
+		"medusa-plugin-payment",
+		"medusa-v2",
+		"payment"
+	],
 	"homepage": "https://github.com/radosek/medusa-plugin-comgate#readme",
 	"bugs": {
 		"url": "https://github.com/radosek/medusa-plugin-comgate/issues"
+	},
+	"license": "MIT",
+	"author": "Radoš",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/radosek/medusa-plugin-comgate.git"
 	},
 	"files": [
 		"dist",
@@ -21,9 +31,6 @@
 		"./providers/*": "./.medusa/server/providers/*/index.js",
 		"./*": "./.medusa/server/*.js"
 	},
-	"engines": {
-		"node": ">=20"
-	},
 	"scripts": {
 		"build": "rimraf dist && tsc --build",
 		"watch": "tsc --watch",
@@ -31,9 +38,14 @@
 		"plugin:develop": "medusa plugin:develop",
 		"plugin:publish": "medusa plugin:publish",
 		"typecheck": "tsc -p tsconfig.test.json --noEmit",
+		"lint": "oxlint",
+		"format": "oxfmt --ignore-path .gitignore --ignore-path .oxfmtignore .",
+		"format:check": "oxfmt --check --ignore-path .gitignore --ignore-path .oxfmtignore .",
+		"check": "bun run format:check && bun run lint && bun run typecheck && bun run test",
 		"test": "jest --passWithNoTests src",
 		"smoke": "node --import tsx scripts/smoke.ts",
-		"prepublishOnly": "bun run typecheck && bun run test && bun run plugin:build"
+		"prepare": "lefthook install",
+		"prepublishOnly": "bun run check && bun run plugin:build"
 	},
 	"devDependencies": {
 		"@medusajs/admin-sdk": "2.18.0",
@@ -45,6 +57,9 @@
 		"@types/jest": "^29.5.12",
 		"@types/node": "^20.11.0",
 		"jest": "^29.7.0",
+		"lefthook": "^2.1.10",
+		"oxfmt": "^0.61.0",
+		"oxlint": "^1.76.0",
 		"rimraf": "^5.0.5",
 		"ts-jest": "^29.4.12",
 		"tsx": "^4.23.1",
@@ -53,16 +68,9 @@
 	"peerDependencies": {
 		"@medusajs/framework": "2.x"
 	},
-	"keywords": [
-		"medusa",
-		"medusa-plugin",
-		"medusa-v2",
-		"medusa-plugin-integration",
-		"medusa-plugin-payment",
-		"comgate",
-		"payment",
-		"czech"
-	],
+	"engines": {
+		"node": ">=20"
+	},
 	"trustedDependencies": [
 		"@medusajs/telemetry",
 		"@swc/core",

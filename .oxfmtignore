@@ -1,0 +1,3 @@
+# Docs use 2-space indentation in code samples (Medusa docs convention) —
+# these snippets get copy-pasted into user projects, so don't retab them.
+*.md

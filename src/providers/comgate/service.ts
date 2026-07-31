@@ -38,7 +38,10 @@ class ComgateProviderService extends AbstractPaymentProvider<ComgateOptions> {
 
 	static validateOptions(options: ComgateOptions): void {
 		if (!options.merchant) {
-			throw new MedusaError(MedusaError.Types.INVALID_DATA, "Comgate provider requires the `merchant` option.")
+			throw new MedusaError(
+				MedusaError.Types.INVALID_DATA,
+				"Comgate provider requires the `merchant` option.",
+			)
 		}
 		if (!options.secret) {
 			throw new MedusaError(MedusaError.Types.INVALID_DATA, "Comgate provider requires the `secret` option.")
@@ -83,9 +86,7 @@ class ComgateProviderService extends AbstractPaymentProvider<ComgateOptions> {
 		const { amount, currency_code, context } = input
 
 		const email =
-			(context?.customer?.email as string) ??
-			(input.data?.email as string) ??
-			"noreply@example.com"
+			(context?.customer?.email as string) ?? (input.data?.email as string) ?? "noreply@example.com"
 		const label = (this.options_.label ?? "Order").slice(0, 16)
 		const refId = (input.data?.session_id as string) ?? (context?.idempotency_key as string) ?? label
 
@@ -258,7 +259,10 @@ class ComgateProviderService extends AbstractPaymentProvider<ComgateOptions> {
 		}
 
 		if (!Number.isFinite(value)) {
-			throw new MedusaError(MedusaError.Types.INVALID_DATA, `Comgate received a non-numeric amount: ${JSON.stringify(amount)}`)
+			throw new MedusaError(
+				MedusaError.Types.INVALID_DATA,
+				`Comgate received a non-numeric amount: ${JSON.stringify(amount)}`,
+			)
 		}
 		return Math.round(value * 100)
 	}

@@ -1,0 +1,22 @@
+# Checks run against staged files only, and never rewrite them: a hook that
+# reformats mid-commit would stage code you never reviewed. If `format` fails,
+# run `bun run format` and re-stage.
+pre-commit:
+  parallel: true
+  jobs:
+    - name: format
+      glob: "*.{ts,js,json,jsonc}"
+      run: bunx oxfmt --check --ignore-path .gitignore --ignore-path .oxfmtignore {staged_files}
+
+    - name: lint
+      glob: "*.{ts,js}"
+      run: bunx oxlint {staged_files}
+
+pre-push:
+  parallel: true
+  jobs:
+    - name: typecheck
+      run: bun run typecheck
+
+    - name: test
+      run: bun run test
