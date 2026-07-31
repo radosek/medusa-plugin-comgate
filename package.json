@@ -32,7 +32,8 @@
 		"plugin:publish": "medusa plugin:publish",
 		"typecheck": "tsc -p tsconfig.test.json --noEmit",
 		"test": "jest --passWithNoTests src",
-		"smoke": "node --import tsx scripts/smoke.ts"
+		"smoke": "node --import tsx scripts/smoke.ts",
+		"prepublishOnly": "bun run typecheck && bun run test && bun run plugin:build"
 	},
 	"devDependencies": {
 		"@medusajs/admin-sdk": "2.18.0",
