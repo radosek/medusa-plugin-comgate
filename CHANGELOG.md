@@ -5,6 +5,7 @@
 - `GET /hooks/payment/comgate_comgate` answers `200` so the Comgate portal's URL probe (a GET) does not report the PUSH URL as unreachable. Notifications are still handled by Medusa's POST route.
 - Verified end-to-end against a Medusa 2.19 store: redirect, PUSH → captured, `cart.complete` on return, admin refund.
 
+- `LICENSE` file added (MIT); package `author` set to the full name.
 - Tested against Medusa 2.19.0; dev dependencies bumped from 2.18.0.
 - `engines.node` tightened to `^20.19.0 || ^22.12.0 || >=24` to match Medusa 2.19's
   requirement (Vite 7 / React Router 7 update dropped older 20.x/22.x releases).

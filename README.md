@@ -8,7 +8,7 @@
 
 > **Disclaimer:** This is an unofficial, community-built integration. It is **not affiliated with, endorsed by, or maintained by Comgate Payments, a.s.** "Comgate" and the Comgate logo are trademarks of their respective owner, used here only to identify the payment gateway this plugin integrates with.
 
-[Comgate API docs](https://apidoc.comgate.cz/en/) | [Medusa Payment Module](https://docs.medusajs.com/resources/commerce-modules/payment)
+[npm](https://www.npmjs.com/package/medusa-plugin-comgate) | [Medusa integrations listing](https://medusajs.com/integrations/medusa-plugin-comgate) | [Comgate API docs](https://apidoc.comgate.cz/en/) | [Medusa Payment Module](https://docs.medusajs.com/resources/commerce-modules/payment)
 
 ## Features
 
