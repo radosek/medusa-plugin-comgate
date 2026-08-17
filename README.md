@@ -115,7 +115,7 @@ In the [Client Portal](https://portal.comgate.cz/) → *Integrace → Nastavení
 | Url nevyřízený | Pending redirect | storefront "payment processing" page |
 | Povolené IP adresy / Povolit všechny IP | Allowed IPs | your backend's egress IP, or allow-all |
 
-**The PUSH URL is mandatory** — without it payments never confirm in Medusa. The three redirect URLs are browser-facing only and **non-authoritative** (the payer can forge their params); never mark an order paid from them. Order state is driven solely by the PUSH webhook.
+**The PUSH URL is mandatory** — without it payments never confirm in Medusa. When you save the connection, the portal probes the PUSH URL with a `GET`; the plugin answers `200` on that path (Medusa's own webhook route is `POST`-only), so the check passes. The three redirect URLs are browser-facing only and **non-authoritative** (the payer can forge their params); never mark an order paid from them. Order state is driven solely by the PUSH webhook.
 
 ### Storefront redirect URLs (Medusa Next.js starter)
 
