@@ -1,6 +1,6 @@
 {
 	"name": "medusa-plugin-comgate",
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"description": "Comgate payment provider for Medusa v2",
 	"keywords": [
 		"comgate",
@@ -17,14 +17,15 @@
 		"url": "https://github.com/radosek/medusa-plugin-comgate/issues"
 	},
 	"license": "MIT",
-	"author": "Radoš",
+	"author": "Radoš Petrović",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/radosek/medusa-plugin-comgate.git"
 	},
 	"files": [
 		"dist",
-		".medusa/server"
+		".medusa/server",
+		"LICENSE"
 	],
 	"exports": {
 		"./package.json": "./package.json",
@@ -48,11 +49,11 @@
 		"prepublishOnly": "bun run check && bun run plugin:build"
 	},
 	"devDependencies": {
-		"@medusajs/admin-sdk": "2.18.0",
-		"@medusajs/cli": "2.18.0",
-		"@medusajs/framework": "2.18.0",
-		"@medusajs/medusa": "2.18.0",
-		"@medusajs/test-utils": "2.18.0",
+		"@medusajs/admin-sdk": "2.19.0",
+		"@medusajs/cli": "2.19.0",
+		"@medusajs/framework": "2.19.0",
+		"@medusajs/medusa": "2.19.0",
+		"@medusajs/test-utils": "2.19.0",
 		"@swc/core": "^1.15.47",
 		"@types/jest": "^29.5.12",
 		"@types/node": "^20.11.0",
@@ -69,7 +70,7 @@
 		"@medusajs/framework": "2.x"
 	},
 	"engines": {
-		"node": ">=20"
+		"node": "^20.19.0 || ^22.12.0 || >=24"
 	},
 	"trustedDependencies": [
 		"@medusajs/telemetry",
