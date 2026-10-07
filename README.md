@@ -72,7 +72,10 @@ module.exports = defineConfig({
 | `label`          | no       | `Order` | Statement label, 1–16 chars. |
 | `method`         | no       | `ALL`   | Payment method, or `ALL` to let the payer choose. |
 | `url_paid` / `url_cancelled` / `url_pending` | no | — | Return URLs. See note below — bake your own order id into them. |
-| `base_url`       | no       | `https://payments.comgate.cz` | API base url (the `/v2.0` version prefix is part of each path). |
+| `base_url`       | no       | `https://payments.comgate.cz` | API base url (the `/v2.0` version prefix is part of each path). Point it at an IPv4 relay if your host egresses over IPv6 — Comgate whitelists IPv4 only and answers `1400` otherwise. |
+| `proxy_key`      | no       | —       | Shared secret for the relay behind `base_url`, sent as `X-Proxy-Key` on every API call. Leave unset when calling Comgate directly. |
+
+Each attempt times out after 15 s. Network errors (no HTTP response) are retried up to 4 attempts with 1 s / 2 s / 3 s backoff, so a relay waking from auto-suspend does not fail the call. Refunds and pre-auth captures retry only when the connection was never established (refused, DNS, connect timeout) — a drop mid-request may already have moved money, so it is surfaced instead. A request that got any HTTP response is never retried. Credentials (`secret`, the Basic token, `proxy_key`) are redacted from every thrown or logged message.
 
 ## Pre-authorization
 
@@ -93,9 +96,15 @@ Uses the Comgate **REST v2.0 JSON API** (`https://payments.comgate.cz/v2.0/...`,
 
 1. **`initiatePayment`** → `POST /v2.0/payment.json`. Returns `data.redirect` — send the payer there. The Medusa payment session id is passed as Comgate `refId`.
 2. The payer pays on the Comgate gateway.
-3. **Webhook** → Comgate POSTs a JSON background notification to `/hooks/payment/comgate_comgate`. `getWebhookActionAndData` constant-time-verifies the echoed `secret`, resolves the session by `refId`, and maps `PAID → captured`, `AUTHORIZED → authorized`, `CANCELLED → failed`.
+3. **Webhook** → Comgate POSTs a background notification (JSON or form-encoded) to `/hooks/payment/comgate_comgate`. `getWebhookActionAndData`:
+   - rejects a present-but-wrong `secret` (constant-time compare);
+   - takes the **canonical** status, price, currency and `refId` from `GET /v2.0/payment/transId/{id}.json`, not from the PUSH body. If that API is unreachable it falls back to the PUSH body **only** when its `secret` verified; otherwise it does nothing;
+   - requires Comgate's `refId` to equal the PUSH `refId` (the Medusa payment session id), and the session's stored `transId` to be absent or equal to the PUSH `transId`;
+   - requires the canonical price and currency to equal the session's amount and currency (anti-tamper);
+   - maps `PAID → captured`, `AUTHORIZED → authorized`, `CANCELLED → failed`, `PENDING → pending`, with `amount` converted from Comgate minor units to Medusa's decimal.
+   Any failed check returns `not_supported` (no state change) and logs an error. Medusa ignores `failed`, so a late `CANCELLED` after `PAID` changes nothing, and a repeated `PAID` is a no-op capture.
 4. **`capturePayment`** → no-op for direct capture (already `PAID`); `PUT /v2.0/preauth/transId/{id}.json` in pre-auth mode.
-5. **`refundPayment`** → `POST /v2.0/refund.json`. **`cancelPayment`** → `DELETE /v2.0/payment/transId/{id}.json` (storno, PENDING only) or `DELETE /v2.0/preauth/transId/{id}.json` in pre-auth mode.
+5. **`refundPayment`** → `POST /v2.0/refund.json`, sending the `test` flag the payment was created with (a mismatch is Comgate error 1402). **`cancelPayment`** → `DELETE /v2.0/payment/transId/{id}.json` (storno, PENDING only) or `DELETE /v2.0/preauth/transId/{id}.json` in pre-auth mode.
 
 > Per Comgate's spec, order fulfillment must be driven by the **background notification**, not the payer's browser redirect, since redirect params are user-controlled. Comgate retries the PUSH up to 1000× until it gets a 2xx — Medusa's webhook handling is idempotent.
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.4
+
+- **Webhook takes the canonical status from Comgate.** `getWebhookActionAndData` no longer trusts `status`/`price` from the PUSH body; it calls the status API for the `transId`. If that API is unreachable the body is used only when its `secret` verified; otherwise the notification is a no-op.
+- **Fix: webhook `amount` was in minor units.** Medusa captures with `data.amount` as a decimal, so a PAID notification for 100 CZK asked to capture 10000. It is now divided by 100.
+- **Anti-tamper.** The canonical price and currency must match the payment session's amount and currency, Comgate's `refId` must match the PUSH `refId`, and the session's stored `transId` must be absent or match. Any mismatch is a no-op with an error log. A wrong `secret` is now also a no-op (was `failed`).
+- Form-encoded PUSH bodies are parsed as well as JSON.
+- **New `proxy_key` option**, sent as `X-Proxy-Key` on every call, for an IPv4 relay set as `base_url`.
+- Network errors are retried up to 4 attempts with backoff; HTTP responses never are. Refunds and pre-auth captures retry only connect-phase failures, so a dropped response cannot refund or capture twice. Each attempt times out after 15 s.
+- **Fix: `prepareOnly: true` is sent on create**, matching the production-proven pcsmash integration.
+- **Fix: refunds reuse the payment's own `test` flag** (stored on the session at initiate) instead of the current config, avoiding Comgate 1402. Sessions created before 0.2.4 fall back to the config value.
+- Credentials (`secret`, Basic token, `proxy_key`) are redacted from every thrown and logged message.
+- Tested against Medusa 2.21.2; dev dependencies bumped from 2.19.0.
+
 ## 0.2.3
 
 - `GET /hooks/payment/comgate_comgate` answers `200` so the Comgate portal's URL probe (a GET) does not report the PUSH URL as unreachable. Notifications are still handled by Medusa's POST route.

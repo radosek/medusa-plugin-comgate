@@ -22,12 +22,27 @@ import type {
 	UpdatePaymentOutput,
 	WebhookActionResult,
 } from "@medusajs/framework/types"
-import { ComgateClient } from "./lib/client"
+import { ComgateClient, ComgateUnreachableError } from "./lib/client"
 import type { ComgateNotification, ComgateOptions, ComgatePaymentData, ComgateStatus } from "./types"
+
+type StoredSession = {
+	id: string
+	amount: unknown
+	currency_code: string
+	data?: Record<string, unknown> | null
+}
+
+/** Payment-module-internal session service; the provider is resolved from that module's container. */
+type PaymentSessionReader = {
+	retrieve(id: string, config?: { select?: string[] }): Promise<StoredSession>
+}
 
 type InjectedDependencies = {
 	logger: Logger
+	paymentSessionService?: PaymentSessionReader
 }
+
+type CanonicalStatus = { status?: ComgateStatus; price?: string; curr?: string; refId?: string }
 
 class ComgateProviderService extends AbstractPaymentProvider<ComgateOptions> {
 	static identifier = "comgate"
@@ -35,6 +50,7 @@ class ComgateProviderService extends AbstractPaymentProvider<ComgateOptions> {
 	protected readonly options_: ComgateOptions
 	protected readonly client_: ComgateClient
 	protected readonly logger_: Logger
+	protected readonly container_: InjectedDependencies
 
 	static validateOptions(options: ComgateOptions): void {
 		if (!options.merchant) {
@@ -52,6 +68,7 @@ class ComgateProviderService extends AbstractPaymentProvider<ComgateOptions> {
 		super(container, options)
 		this.options_ = options
 		this.logger_ = container.logger
+		this.container_ = container
 		this.client_ = new ComgateClient(options)
 	}
 
@@ -129,6 +146,7 @@ class ComgateProviderService extends AbstractPaymentProvider<ComgateOptions> {
 			curr: currency_code.toUpperCase(),
 			refId,
 			preauth: !!this.options_.preauth,
+			test: this.test,
 		}
 
 		return { id: res.transId!, data, status: "pending" }
@@ -159,7 +177,9 @@ class ComgateProviderService extends AbstractPaymentProvider<ComgateOptions> {
 	async refundPayment(input: RefundPaymentInput): Promise<RefundPaymentOutput> {
 		const data = this.data(input.data)
 		const amount = this.toMinorUnits(input.amount, data.curr ?? "CZK")
-		await this.client_.refund(data.transId, amount, this.test, data.refId)
+		// Comgate rejects a refund whose `test` differs from the payment's (1402), so
+		// use the flag the payment was created with, not the current config.
+		await this.client_.refund(data.transId, amount, data.test ?? this.test, data.refId)
 		return { data: input.data ?? {} }
 	}
 
@@ -174,7 +194,7 @@ class ComgateProviderService extends AbstractPaymentProvider<ComgateOptions> {
 		} catch (e) {
 			// A payment that was never paid / already terminal cannot be cancelled;
 			// treat as a no-op so the Medusa flow can proceed.
-			this.logger_.warn(`Comgate cancelPayment ignored: ${(e as Error).message}`)
+			this.logger_.warn(`Comgate cancelPayment ignored: ${this.client_.redact((e as Error).message)}`)
 		}
 		return { data: { ...input.data, status: "CANCELLED" satisfies ComgateStatus } }
 	}
@@ -195,59 +215,127 @@ class ComgateProviderService extends AbstractPaymentProvider<ComgateOptions> {
 	}
 
 	async getWebhookActionAndData(payload: ProviderWebhookPayload["payload"]): Promise<WebhookActionResult> {
-		const note = this.parseNotification(payload)
-
 		const noop: WebhookActionResult = {
 			action: PaymentActions.NOT_SUPPORTED,
 			data: { session_id: "", amount: new BigNumber(0) },
 		}
 
+		const note = this.parseNotification(payload)
 		if (!note) {
 			return noop
 		}
 
-		// The notification carries `secret` so we can verify it really came from
-		// the merchant's Comgate account before acting on it. Compared in
+		// v2.0 PUSH may omit `secret`; a present one must match. Compared in
 		// constant time to avoid leaking the secret via timing.
-		if (!this.client_.verifySecret(note.secret)) {
-			this.logger_.error("Comgate webhook rejected: secret mismatch")
-			return { ...noop, action: PaymentActions.FAILED }
+		const secretVerified = note.secret !== undefined && this.client_.verifySecret(note.secret)
+		if (note.secret !== undefined && !secretVerified) {
+			this.logger_.error(`Comgate webhook rejected: secret mismatch (transId ${note.transId})`)
+			return noop
 		}
 
-		const sessionId = note.refId // refId === Medusa payment session id (set at initiate)
-		const amount = new BigNumber(Number(note.price) || 0)
-		const data = { session_id: sessionId, amount }
+		// The status API is the source of truth, not the PUSH body. When it cannot be
+		// reached the body is trusted only if its secret verified — an unauthenticated
+		// body must never move a payment.
+		let canonical: CanonicalStatus
+		try {
+			canonical = await this.client_.status(note.transId)
+		} catch (e) {
+			const message = this.client_.redact((e as Error).message)
+			if (e instanceof ComgateUnreachableError && secretVerified && note.status && note.price && note.curr) {
+				this.logger_.warn(`Comgate status API unreachable, using secret-verified PUSH body: ${message}`)
+				canonical = note
+			} else {
+				this.logger_.warn(`Comgate webhook for ${note.transId} ignored, status unavailable: ${message}`)
+				return noop
+			}
+		}
 
-		switch (note.status) {
+		// refId is the Medusa payment session id (set at initiate).
+		const refId = note.refId
+		if (!refId || canonical.refId !== refId) {
+			this.logger_.error(
+				`Comgate webhook rejected: refId ${String(refId)} does not match Comgate's ${String(canonical.refId)} (transId ${note.transId})`,
+			)
+			return noop
+		}
+
+		let session: StoredSession
+		try {
+			session = await this.sessionService().retrieve(refId, {
+				select: ["id", "amount", "currency_code", "data"],
+			})
+		} catch (e) {
+			this.logger_.warn(`Comgate webhook for unknown session ${refId} ignored: ${(e as Error).message}`)
+			return noop
+		}
+
+		const storedTransId = session.data?.transId
+		if (storedTransId && storedTransId !== note.transId) {
+			this.logger_.error(
+				`Comgate webhook rejected: transId ${note.transId} is not the one stored on session ${refId}`,
+			)
+			return noop
+		}
+
+		const price = Number(canonical.price)
+		const expected = this.toMinorUnits(
+			session.amount as InitiatePaymentInput["amount"],
+			session.currency_code,
+		)
+		const currency = session.currency_code.toUpperCase()
+		if (!Number.isInteger(price) || price !== expected || canonical.curr !== currency) {
+			this.logger_.error(
+				`Comgate webhook rejected: ${String(canonical.price)} ${String(canonical.curr)} does not match session ${refId} (${expected} ${currency})`,
+			)
+			return noop
+		}
+
+		// Comgate reports minor units; Medusa's capture uses `amount` as a decimal.
+		const data = { session_id: refId, amount: new BigNumber(price / 100) }
+
+		switch (canonical.status) {
 			case "PAID":
 				return { action: PaymentActions.SUCCESSFUL, data }
 			case "AUTHORIZED":
 				return { action: PaymentActions.AUTHORIZED, data }
 			case "CANCELLED":
+				// Medusa ignores FAILED webhook actions, so a late CANCELLED after PAID
+				// cannot undo a captured payment.
 				return { action: PaymentActions.FAILED, data }
 			case "PENDING":
-			default:
 				return { action: PaymentActions.PENDING, data }
+			default:
+				return noop
 		}
+	}
+
+	private sessionService(): PaymentSessionReader {
+		const service = this.container_.paymentSessionService
+		if (!service) {
+			throw new Error("paymentSessionService is not available in the payment module container")
+		}
+		return service
 	}
 
 	private parseNotification(payload: ProviderWebhookPayload["payload"]): ComgateNotification | undefined {
 		const { data, rawData } = payload
 		let parsed: Record<string, unknown> | undefined = data as Record<string, unknown>
 
-		// REST v2.0 PUSH notifications are JSON. Depending on the body parser the
-		// framework hands us either the parsed object or the raw buffer.
+		// REST v2.0 PUSH is JSON, older merchants still get form-encoded bodies.
+		// Depending on the body parser the framework hands us either the parsed
+		// object or the raw buffer.
 		if (!parsed?.transId && rawData) {
+			const raw = rawData.toString()
 			try {
-				parsed = JSON.parse(rawData.toString())
+				parsed = JSON.parse(raw)
 			} catch {
-				this.logger_.warn("Comgate webhook rawData is not valid JSON")
-				return undefined
+				const form = new URLSearchParams(raw)
+				parsed = form.get("transId") ? Object.fromEntries(form) : undefined
 			}
 		}
 
-		if (!parsed?.transId || !parsed?.refId || !parsed?.status) {
-			this.logger_.warn("Comgate webhook missing transId/refId/status")
+		if (typeof parsed?.transId !== "string" || !parsed.transId) {
+			this.logger_.warn("Comgate webhook missing transId")
 			return undefined
 		}
 		return parsed as ComgateNotification
