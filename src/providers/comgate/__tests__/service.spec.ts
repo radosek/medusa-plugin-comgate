@@ -1,11 +1,25 @@
 import { BigNumber } from "@medusajs/framework/utils"
+import { ComgateError, ComgateUnreachableError } from "../lib/client"
 import ComgateProviderService from "../service"
 import type { ComgateOptions } from "../types"
 
 const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as any
 
+const session = {
+	id: "ps_123",
+	amount: 100,
+	currency_code: "czk",
+	data: { transId: "AB12-CD34" } as Record<string, unknown>,
+}
+const paymentSessionService = { retrieve: jest.fn() }
+
+beforeEach(() => {
+	jest.clearAllMocks()
+	paymentSessionService.retrieve.mockResolvedValue(session)
+})
+
 function makeService(options: Partial<ComgateOptions> = {}) {
-	return new ComgateProviderService({ logger }, {
+	return new ComgateProviderService({ logger, paymentSessionService }, {
 		merchant: "123456",
 		secret: "topsecret",
 		test: true,
@@ -27,6 +41,21 @@ describe("ComgateProviderService.validateOptions", () => {
 	})
 })
 
+const canonical = (over: Record<string, unknown> = {}) => ({
+	code: 0,
+	message: "OK",
+	transId: "AB12-CD34",
+	refId: "ps_123",
+	price: "10000",
+	curr: "CZK",
+	status: "PAID",
+	...over,
+})
+
+function withStatus(svc: ComgateProviderService, impl: () => Promise<unknown>) {
+	return jest.spyOn((svc as any).client_, "status").mockImplementation(impl)
+}
+
 describe("getWebhookActionAndData", () => {
 	const baseNote = {
 		transId: "AB12-CD34",
@@ -37,45 +66,164 @@ describe("getWebhookActionAndData", () => {
 		secret: "topsecret",
 		test: "true",
 	}
-
-	it("maps PAID -> captured and resolves session from refId", async () => {
+	it("takes the status from the status API, not the PUSH body", async () => {
 		const svc = makeService()
+		const status = withStatus(svc, async () => canonical({ status: "CANCELLED" }))
+		const res = await svc.getWebhookActionAndData({ data: { ...baseNote, status: "PAID" } } as any)
+		expect(status).toHaveBeenCalledWith("AB12-CD34")
+		expect(res.action).toBe("failed")
+	})
+
+	it("maps canonical PAID -> captured with the amount in major units", async () => {
+		const svc = makeService()
+		withStatus(svc, async () => canonical())
 		const res = await svc.getWebhookActionAndData({ data: { ...baseNote, status: "PAID" } } as any)
 		expect(res.action).toBe("captured")
 		expect(res.data?.session_id).toBe("ps_123")
-		expect((res.data!.amount as BigNumber).numeric).toBe(10000)
+		expect((res.data!.amount as BigNumber).numeric).toBe(100)
 	})
 
-	it("maps AUTHORIZED -> authorized", async () => {
+	it("maps AUTHORIZED -> authorized and PENDING -> pending", async () => {
 		const svc = makeService()
-		const res = await svc.getWebhookActionAndData({ data: { ...baseNote, status: "AUTHORIZED" } } as any)
-		expect(res.action).toBe("authorized")
+		withStatus(svc, async () => canonical({ status: "AUTHORIZED" }))
+		expect((await svc.getWebhookActionAndData({ data: baseNote } as any)).action).toBe("authorized")
+		withStatus(svc, async () => canonical({ status: "PENDING" }))
+		expect((await svc.getWebhookActionAndData({ data: baseNote } as any)).action).toBe("pending")
 	})
 
-	it("maps CANCELLED -> failed", async () => {
+	it("answers a late CANCELLED with FAILED, which Medusa does not act on", async () => {
 		const svc = makeService()
+		withStatus(svc, async () => canonical({ status: "CANCELLED" }))
 		const res = await svc.getWebhookActionAndData({ data: { ...baseNote, status: "CANCELLED" } } as any)
 		expect(res.action).toBe("failed")
+		expect(res.action).not.toBe("captured")
 	})
 
-	it("rejects on secret mismatch", async () => {
+	it("is a no-op for an unknown canonical status", async () => {
 		const svc = makeService()
+		withStatus(svc, async () => canonical({ status: "WEIRD" }))
+		expect((await svc.getWebhookActionAndData({ data: baseNote } as any)).action).toBe("not_supported")
+	})
+
+	it("falls back to a secret-verified PUSH body when the status API is unreachable", async () => {
+		const svc = makeService()
+		withStatus(svc, async () => {
+			throw new ComgateUnreachableError("socket closed")
+		})
+		const res = await svc.getWebhookActionAndData({ data: { ...baseNote, status: "PAID" } } as any)
+		expect(res.action).toBe("captured")
+		expect((res.data!.amount as BigNumber).numeric).toBe(100)
+	})
+
+	it("does not fall back when the PUSH body carries no secret", async () => {
+		const svc = makeService()
+		withStatus(svc, async () => {
+			throw new ComgateUnreachableError("socket closed")
+		})
+		const { secret: _secret, ...unsigned } = baseNote
+		const res = await svc.getWebhookActionAndData({ data: { ...unsigned, status: "PAID" } } as any)
+		expect(res.action).toBe("not_supported")
+		expect(res.data?.session_id).toBe("")
+	})
+
+	it("does not fall back when Comgate answered with an error code", async () => {
+		const svc = makeService()
+		withStatus(svc, async () => {
+			throw new ComgateError("status", 1400, "bad request")
+		})
+		const res = await svc.getWebhookActionAndData({ data: { ...baseNote, status: "PAID" } } as any)
+		expect(res.action).toBe("not_supported")
+	})
+
+	it("trusts an unsigned PUSH when the status API confirms it", async () => {
+		const svc = makeService()
+		withStatus(svc, async () => canonical())
+		const { secret: _secret, ...unsigned } = baseNote
+		const res = await svc.getWebhookActionAndData({ data: { ...unsigned, status: "PAID" } } as any)
+		expect(res.action).toBe("captured")
+	})
+
+	it("rejects a wrong secret without calling Comgate", async () => {
+		const svc = makeService()
+		const status = withStatus(svc, async () => canonical())
 		const res = await svc.getWebhookActionAndData({
 			data: { ...baseNote, secret: "wrong", status: "PAID" },
 		} as any)
-		expect(res.action).toBe("failed")
+		expect(res.action).toBe("not_supported")
 		expect(res.data?.session_id).toBe("")
+		expect(status).not.toHaveBeenCalled()
+	})
+
+	it("rejects when the canonical price does not match the session amount", async () => {
+		const svc = makeService()
+		withStatus(svc, async () => canonical({ price: "100" }))
+		const res = await svc.getWebhookActionAndData({ data: baseNote } as any)
+		expect(res.action).toBe("not_supported")
+		expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("does not match session"))
+	})
+
+	it("rejects when the canonical currency does not match the session", async () => {
+		const svc = makeService()
+		withStatus(svc, async () => canonical({ curr: "EUR" }))
+		expect((await svc.getWebhookActionAndData({ data: baseNote } as any)).action).toBe("not_supported")
+	})
+
+	it("rejects a tampered PUSH body on the fallback path too", async () => {
+		const svc = makeService()
+		withStatus(svc, async () => {
+			throw new ComgateUnreachableError("down")
+		})
+		const res = await svc.getWebhookActionAndData({
+			data: { ...baseNote, price: "1", status: "PAID" },
+		} as any)
+		expect(res.action).toBe("not_supported")
+	})
+
+	it("rejects when Comgate's refId differs from the PUSH refId", async () => {
+		const svc = makeService()
+		withStatus(svc, async () => canonical({ refId: "ps_other" }))
+		expect((await svc.getWebhookActionAndData({ data: baseNote } as any)).action).toBe("not_supported")
+		expect(paymentSessionService.retrieve).not.toHaveBeenCalled()
+	})
+
+	it("rejects a transId that is not the one stored on the session", async () => {
+		const svc = makeService()
+		paymentSessionService.retrieve.mockResolvedValue({ ...session, data: { transId: "OTHER-1" } })
+		withStatus(svc, async () => canonical())
+		expect((await svc.getWebhookActionAndData({ data: baseNote } as any)).action).toBe("not_supported")
+	})
+
+	it("accepts a session with no stored transId yet", async () => {
+		const svc = makeService()
+		paymentSessionService.retrieve.mockResolvedValue({ ...session, data: {} })
+		withStatus(svc, async () => canonical())
+		expect((await svc.getWebhookActionAndData({ data: baseNote } as any)).action).toBe("captured")
+	})
+
+	it("acks an unknown session as a no-op", async () => {
+		const svc = makeService()
+		paymentSessionService.retrieve.mockRejectedValue(new Error("not found"))
+		withStatus(svc, async () => canonical())
+		expect((await svc.getWebhookActionAndData({ data: baseNote } as any)).action).toBe("not_supported")
 	})
 
 	it("parses JSON rawData when body not pre-parsed", async () => {
 		const svc = makeService()
+		withStatus(svc, async () => canonical())
 		const raw = JSON.stringify({ ...baseNote, status: "PAID" })
 		const res = await svc.getWebhookActionAndData({ data: {}, rawData: raw } as any)
 		expect(res.action).toBe("captured")
-		expect(res.data?.session_id).toBe("ps_123")
 	})
 
-	it("returns not_supported when transId/refId/status missing", async () => {
+	it("parses a form-encoded rawData body", async () => {
+		const svc = makeService()
+		withStatus(svc, async () => canonical())
+		const raw = new URLSearchParams({ ...baseNote, status: "PAID" }).toString()
+		const res = await svc.getWebhookActionAndData({ data: {}, rawData: Buffer.from(raw) } as any)
+		expect(res.action).toBe("captured")
+	})
+
+	it("returns not_supported when transId is missing", async () => {
 		const svc = makeService()
 		const res = await svc.getWebhookActionAndData({ data: {} } as any)
 		expect(res.action).toBe("not_supported")
@@ -130,6 +278,7 @@ describe("initiatePayment", () => {
 		expect(res.status).toBe("pending")
 		expect((res.data as any).redirect).toBe("https://pay1.x/init?id=T1")
 		expect((res.data as any).refId).toBe("ps_42")
+		expect((res.data as any).test).toBe(true)
 	})
 
 	it("truncates label to 16 chars and falls back to a default email", async () => {
@@ -217,6 +366,16 @@ describe("refundPayment", () => {
 		const refund = jest.spyOn((svc as any).client_, "refund").mockResolvedValue({ code: 0, message: "OK" })
 		await svc.refundPayment({ amount: 25, data: { transId: "T", curr: "CZK", refId: "ps_9" } } as any)
 		expect(refund).toHaveBeenCalledWith("T", 2500, true, "ps_9")
+	})
+
+	it("reuses the payment's own test flag, not the current config", async () => {
+		const svc = makeService({ test: true })
+		const refund = jest.spyOn((svc as any).client_, "refund").mockResolvedValue({ code: 0, message: "OK" })
+		await svc.refundPayment({
+			amount: 1,
+			data: { transId: "T", curr: "CZK", refId: "r", test: false },
+		} as any)
+		expect(refund).toHaveBeenCalledWith("T", 100, false, "r")
 	})
 
 	it("refunds when Medusa passes a raw BigNumber amount ({ value, precision })", async () => {

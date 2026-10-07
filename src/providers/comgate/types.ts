@@ -59,9 +59,16 @@ export interface ComgateOptions {
 	url_cancelled?: string
 	url_pending?: string
 	/**
-	 * Override the API base url. Defaults to the public Comgate endpoint.
+	 * Override the API base url. Defaults to the public Comgate endpoint. Point it
+	 * at an IPv4 relay when the host egresses over IPv6 (Comgate whitelists IPv4
+	 * only and answers 1400 otherwise).
 	 */
 	base_url?: string
+	/**
+	 * Shared secret for the relay behind `base_url`, sent as `X-Proxy-Key` on every
+	 * API call. Leave unset when calling Comgate directly.
+	 */
+	proxy_key?: string
 }
 
 export type ComgateLang =
@@ -95,13 +102,13 @@ export interface ComgatePaymentData extends Record<string, unknown> {
 	curr?: string
 	refId?: string
 	preauth?: boolean
+	/** Test flag the payment was created with; refunds must send the same value. */
+	test?: boolean
 }
 
 /**
  * Body for `POST /v2.0/payment.json`. Auth is the Basic header (no merchant /
- * secret in the body). v2.0 supports `prepareOnly`, but this provider omits it and
- * always does the background create that returns a `redirect` URL — that flow works
- * without it.
+ * secret in the body). The client always adds `prepareOnly: true`.
  */
 export interface CreatePaymentRequest {
 	/** Amount in the minor currency unit (e.g. cents / haléře). */
@@ -159,11 +166,11 @@ export interface CodeMessageResponse {
 /** Parameters Comgate POSTs to the merchant background-notification URL. */
 export interface ComgateNotification extends Record<string, unknown> {
 	transId: string
-	refId: string
-	status: ComgateStatus
-	price: string
-	curr: string
-	merchant: string
-	secret: string
-	test: string
+	refId?: string
+	status?: ComgateStatus
+	price?: string
+	curr?: string
+	merchant?: string
+	secret?: string
+	test?: string
 }
