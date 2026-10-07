@@ -75,7 +75,7 @@ module.exports = defineConfig({
 | `base_url`       | no       | `https://payments.comgate.cz` | API base url (the `/v2.0` version prefix is part of each path). Point it at an IPv4 relay if your host egresses over IPv6 — Comgate whitelists IPv4 only and answers `1400` otherwise. |
 | `proxy_key`      | no       | —       | Shared secret for the relay behind `base_url`, sent as `X-Proxy-Key` on every API call. Leave unset when calling Comgate directly. |
 
-Network errors (no HTTP response) are retried up to 4 attempts with 1 s / 2 s / 3 s backoff, so a relay waking from auto-suspend does not fail the call. A request that got any HTTP response is never retried. Credentials (`secret`, the Basic token, `proxy_key`) are redacted from every thrown or logged message.
+Each attempt times out after 15 s. Network errors (no HTTP response) are retried up to 4 attempts with 1 s / 2 s / 3 s backoff, so a relay waking from auto-suspend does not fail the call. Refunds and pre-auth captures retry only when the connection was never established (refused, DNS, connect timeout) — a drop mid-request may already have moved money, so it is surfaced instead. A request that got any HTTP response is never retried. Credentials (`secret`, the Basic token, `proxy_key`) are redacted from every thrown or logged message.
 
 ## Pre-authorization
 

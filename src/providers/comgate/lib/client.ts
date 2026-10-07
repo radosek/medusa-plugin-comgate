@@ -9,6 +9,20 @@ import type {
 
 const DEFAULT_BASE_URL = "https://payments.comgate.cz"
 const MAX_ATTEMPTS = 4
+const ATTEMPT_TIMEOUT_MS = 15_000
+// Errors raised before any byte of the request reached the server.
+const CONNECT_ERROR_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT"])
+
+/**
+ * `any` retries every thrown network error. `connect` retries only errors proving
+ * the request was never sent — for calls where a repeat would move money twice.
+ */
+type RetryMode = "any" | "connect"
+
+function isConnectError(e: unknown): boolean {
+	const code = (e as { cause?: { code?: string } })?.cause?.code
+	return code !== undefined && CONNECT_ERROR_CODES.has(code)
+}
 
 export class ComgateError extends Error {
 	code: number
@@ -89,7 +103,7 @@ export class ComgateClient {
 
 	/** POST /v2.0/refund.json — refund a PAID payment, full or partial. */
 	async refund(transId: string, amount: number, test: boolean, refId?: string): Promise<CodeMessageResponse> {
-		const body = await this.request("POST", "/v2.0/refund.json", { transId, amount, test, refId })
+		const body = await this.request("POST", "/v2.0/refund.json", { transId, amount, test, refId }, "connect")
 		this.assertOk("refund", body)
 		return body as unknown as CodeMessageResponse
 	}
@@ -100,6 +114,7 @@ export class ComgateClient {
 			"PUT",
 			`/v2.0/preauth/transId/${encodeURIComponent(transId)}.json`,
 			amount != null ? { amount } : {},
+			"connect",
 		)
 		this.assertOk("capturePreauth", body)
 		return body as unknown as CodeMessageResponse
@@ -128,6 +143,7 @@ export class ComgateClient {
 		method: string,
 		path: string,
 		body?: Record<string, unknown>,
+		retry: RetryMode = "any",
 	): Promise<Record<string, unknown>> {
 		const headers: Record<string, string> = { Authorization: this.authHeader }
 		if (this.proxyKey) headers["X-Proxy-Key"] = this.proxyKey
@@ -147,16 +163,20 @@ export class ComgateClient {
 			if (attempt > 0) await this.sleep(1000 * attempt)
 			try {
 				// oxlint-disable-next-line no-await-in-loop
-				response = await fetch(`${this.baseUrl}${path}`, { method, headers, body: payload })
+				response = await fetch(`${this.baseUrl}${path}`, {
+					method,
+					headers,
+					body: payload,
+					signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
+				})
 				break
 			} catch (e) {
 				lastError = String((e as Error)?.message ?? e)
+				if (retry === "connect" && !isConnectError(e)) break
 			}
 		}
 		if (!response) {
-			throw new ComgateUnreachableError(
-				this.redact(`Comgate ${path} unreachable after ${MAX_ATTEMPTS} attempts: ${lastError}`),
-			)
+			throw new ComgateUnreachableError(this.redact(`Comgate ${path} unreachable: ${lastError}`))
 		}
 
 		const text = await response.text()

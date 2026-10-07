@@ -7,7 +7,7 @@
 - **Anti-tamper.** The canonical price and currency must match the payment session's amount and currency, Comgate's `refId` must match the PUSH `refId`, and the session's stored `transId` must be absent or match. Any mismatch is a no-op with an error log. A wrong `secret` is now also a no-op (was `failed`).
 - Form-encoded PUSH bodies are parsed as well as JSON.
 - **New `proxy_key` option**, sent as `X-Proxy-Key` on every call, for an IPv4 relay set as `base_url`.
-- Network errors are retried up to 4 attempts with backoff; HTTP responses never are.
+- Network errors are retried up to 4 attempts with backoff; HTTP responses never are. Refunds and pre-auth captures retry only connect-phase failures, so a dropped response cannot refund or capture twice. Each attempt times out after 15 s.
 - **Fix: `prepareOnly: true` is sent on create**, matching the production-proven pcsmash integration.
 - **Fix: refunds reuse the payment's own `test` flag** (stored on the session at initiate) instead of the current config, avoiding Comgate 1402. Sessions created before 0.2.4 fall back to the config value.
 - Credentials (`secret`, Basic token, `proxy_key`) are redacted from every thrown and logged message.

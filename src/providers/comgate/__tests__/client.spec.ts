@@ -171,6 +171,31 @@ describe("retries", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(4)
 	})
 
+	it("retries a refund only when the request provably never left", async () => {
+		const refused = Object.assign(new Error("fetch failed"), { cause: { code: "ECONNREFUSED" } })
+		const fetchMock = jest.fn().mockRejectedValueOnce(refused).mockResolvedValue(ok)
+		;(global as any).fetch = fetchMock
+		await new ComgateClient(OPTS, async () => undefined).refund("T1", 100, true)
+		expect(fetchMock).toHaveBeenCalledTimes(2)
+	})
+
+	it("does not retry a refund or capture after an ambiguous socket error", async () => {
+		const reset = Object.assign(new Error("fetch failed"), { cause: { code: "ECONNRESET" } })
+		const fetchMock = jest.fn().mockRejectedValue(reset)
+		;(global as any).fetch = fetchMock
+		const client = new ComgateClient(OPTS, async () => undefined)
+		await expect(client.refund("T1", 100, true)).rejects.toBeInstanceOf(ComgateUnreachableError)
+		await expect(client.capturePreauth("T1")).rejects.toBeInstanceOf(ComgateUnreachableError)
+		expect(fetchMock).toHaveBeenCalledTimes(2)
+	})
+
+	it("bounds every attempt with a timeout signal", async () => {
+		const fetchMock = jest.fn().mockResolvedValue(ok)
+		;(global as any).fetch = fetchMock
+		await new ComgateClient(OPTS).status("T1")
+		expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal)
+	})
+
 	it("never retries once an HTTP response came back", async () => {
 		const fetchMock = mockFetch(400, { code: 1400, message: "bad request" })
 		;(global as any).fetch = fetchMock
