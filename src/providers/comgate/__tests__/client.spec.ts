@@ -189,6 +189,17 @@ describe("retries", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(2)
 	})
 
+	it("reports a stalled response body as unreachable", async () => {
+		;(global as any).fetch = jest.fn().mockResolvedValue({
+			ok: true,
+			status: 200,
+			text: async () => {
+				throw new DOMException("timed out", "TimeoutError")
+			},
+		})
+		await expect(new ComgateClient(OPTS).status("T1")).rejects.toBeInstanceOf(ComgateUnreachableError)
+	})
+
 	it("bounds every attempt with a timeout signal", async () => {
 		const fetchMock = jest.fn().mockResolvedValue(ok)
 		;(global as any).fetch = fetchMock

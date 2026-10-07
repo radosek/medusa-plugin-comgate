@@ -179,7 +179,14 @@ export class ComgateClient {
 			throw new ComgateUnreachableError(this.redact(`Comgate ${path} unreachable: ${lastError}`))
 		}
 
-		const text = await response.text()
+		let text: string
+		try {
+			text = await response.text()
+		} catch (e) {
+			throw new ComgateUnreachableError(
+				this.redact(`Comgate ${path} response body failed: ${String((e as Error)?.message ?? e)}`),
+			)
+		}
 		let parsed: Record<string, unknown>
 		try {
 			parsed = text ? JSON.parse(text) : {}
