@@ -104,7 +104,8 @@ Uses the Comgate **REST v2.0 JSON API** (`https://payments.comgate.cz/v2.0/...`,
    - maps `PAID → captured`, `AUTHORIZED → authorized`, `CANCELLED → failed`, `PENDING → pending`, with `amount` converted from Comgate minor units to Medusa's decimal.
    Any failed check returns `not_supported` (no state change) and logs an error. Medusa ignores `failed`, so a late `CANCELLED` after `PAID` changes nothing, and a repeated `PAID` is a no-op capture.
 4. **`capturePayment`** → no-op for direct capture (already `PAID`); `PUT /v2.0/preauth/transId/{id}.json` in pre-auth mode.
-5. **`refundPayment`** → `POST /v2.0/refund.json`, sending the `test` flag the payment was created with (a mismatch is Comgate error 1402). **`cancelPayment`** → `DELETE /v2.0/payment/transId/{id}.json` (storno, PENDING only) or `DELETE /v2.0/preauth/transId/{id}.json` in pre-auth mode.
+5. **`updatePayment`** → if the amount or currency changes, the plugin cancels the old Comgate payment and creates a new payment with the same `refId`. Comgate cannot change the amount of a payment.
+6. **`refundPayment`** → `POST /v2.0/refund.json`, sending the `test` flag the payment was created with (a mismatch is Comgate error 1402). **`cancelPayment`** → `DELETE /v2.0/payment/transId/{id}.json` (storno, PENDING only) or `DELETE /v2.0/preauth/transId/{id}.json` in pre-auth mode.
 
 > Per Comgate's spec, order fulfillment must be driven by the **background notification**, not the payer's browser redirect, since redirect params are user-controlled. Comgate retries the PUSH up to 1000× until it gets a 2xx — Medusa's webhook handling is idempotent.
 

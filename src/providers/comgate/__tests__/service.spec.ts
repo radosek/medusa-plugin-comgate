@@ -481,14 +481,41 @@ describe("retrievePayment / updatePayment", () => {
 		jest
 			.spyOn((svc as any).client_, "status")
 			.mockResolvedValue({ code: 0, message: "OK", status: "PAID", price: "10000" })
-		const res = await svc.retrievePayment({ data: { transId: "T" } } as any)
+		const res = await svc.retrievePayment({ data: { transId: "T", price: 10000 } } as any)
 		expect((res.data as any).status).toBe("PAID")
-		expect((res.data as any).price).toBe("10000")
+		expect((res.data as any).price).toBe(10000)
 	})
 
-	it("updatePayment is a no-op that echoes data (Comgate cannot change amount)", async () => {
+	it("updatePayment keeps the payment when amount and currency do not change", async () => {
 		const svc = makeService()
-		const res = await svc.updatePayment({ data: { transId: "T", foo: 1 } } as any)
-		expect(res.data).toEqual({ transId: "T", foo: 1 })
+		const create = jest.spyOn((svc as any).client_, "create")
+		const data = { transId: "T1", price: 10000, curr: "CZK", refId: "ps_1" }
+		const res = await svc.updatePayment({ data, amount: 100, currency_code: "czk" } as any)
+		expect(res.data).toEqual(data)
+		expect(create).not.toHaveBeenCalled()
+	})
+
+	it("updatePayment replaces the payment when the amount changes", async () => {
+		const svc = makeService()
+		const cancel = jest.spyOn((svc as any).client_, "cancel").mockResolvedValue({ code: 0, message: "OK" })
+		const create = jest
+			.spyOn((svc as any).client_, "create")
+			.mockResolvedValue({ code: 0, message: "OK", transId: "T2", redirect: "https://pay/T2" })
+		const data = { transId: "T1", price: 10000, curr: "CZK", refId: "ps_1", redirect: "https://pay/T1" }
+		const res = await svc.updatePayment({ data, amount: 120, currency_code: "czk" } as any)
+		expect(cancel).toHaveBeenCalledWith("T1")
+		expect(create).toHaveBeenCalledWith(expect.objectContaining({ price: 12000, curr: "CZK", refId: "ps_1" }))
+		expect(res.data).toMatchObject({ transId: "T2", redirect: "https://pay/T2", price: 12000, refId: "ps_1" })
+	})
+
+	it("updatePayment replaces the payment when the currency changes, even if the old one cannot be cancelled", async () => {
+		const svc = makeService()
+		jest.spyOn((svc as any).client_, "cancel").mockRejectedValue(new Error("already terminal"))
+		jest
+			.spyOn((svc as any).client_, "create")
+			.mockResolvedValue({ code: 0, message: "OK", transId: "T3", redirect: "x" })
+		const data = { transId: "T1", price: 10000, curr: "CZK", refId: "ps_1" }
+		const res = await svc.updatePayment({ data, amount: 100, currency_code: "eur" } as any)
+		expect(res.data).toMatchObject({ transId: "T3", curr: "EUR" })
 	})
 })

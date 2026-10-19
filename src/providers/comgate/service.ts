@@ -206,12 +206,30 @@ class ComgateProviderService extends AbstractPaymentProvider<ComgateOptions> {
 	async retrievePayment(input: RetrievePaymentInput): Promise<RetrievePaymentOutput> {
 		const { transId } = this.data(input.data)
 		const res = await this.client_.status(transId)
-		return { data: { ...input.data, ...res } }
+		return { data: { ...input.data, status: res.status } }
 	}
 
 	async updatePayment(input: UpdatePaymentInput): Promise<UpdatePaymentOutput> {
-		// Comgate has no amount-update endpoint; the payment is fixed once created.
-		return { data: input.data ?? {} }
+		// Comgate cannot change the amount of a payment. When the cart total or currency
+		// changes, cancel the old payment and create a new one with the same refId.
+		// Otherwise the payer pays the old amount and the webhook rejects it.
+		const data = this.data(input.data)
+		const price = this.toMinorUnits(input.amount, input.currency_code)
+		const curr = input.currency_code.toUpperCase()
+		if (data.transId && data.price === price && data.curr === curr) {
+			return { data: input.data ?? {} }
+		}
+
+		if (data.transId) {
+			await this.cancelPayment({ data: input.data })
+		}
+		const created = await this.initiatePayment({
+			amount: input.amount,
+			currency_code: input.currency_code,
+			context: input.context,
+			data: { ...input.data, session_id: data.refId ?? input.data?.session_id },
+		})
+		return { data: created.data, status: created.status }
 	}
 
 	async getWebhookActionAndData(payload: ProviderWebhookPayload["payload"]): Promise<WebhookActionResult> {

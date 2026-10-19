@@ -20,6 +20,8 @@
   - Each try stops after 15 s.
 - **`prepareOnly`.** The plugin sends `prepareOnly: true` when it creates a payment. The pcsmash production integration also sent it. The v2.0 documentation does not list it. A test on 2026-10-19 showed that v2.0 creates the payment with or without it.
 - **Fix: refund test flag.** A refund uses the `test` flag of the original payment. Before, it used the current configuration, and Comgate returned error 1402. Sessions from before 0.2.4 use the configuration value.
+- **Amount change after create.** Comgate cannot change the amount of a payment. If the cart total or currency changes, `updatePayment` cancels the old Comgate payment and creates a new payment with the same `refId`. Before, the payer paid the old amount.
+- **`retrievePayment`.** The plugin adds only the live `status` to the session data. It does not replace the stored `price` and `test` values with strings.
 - **Credentials.** The plugin removes the `secret`, the Basic token and `proxy_key` from all error messages and logs.
 - **Tests.** The plugin is tested with Medusa 2.21.2. The dev dependencies changed from 2.19.0.
 
