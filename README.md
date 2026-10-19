@@ -4,18 +4,18 @@
 
 # medusa-plugin-comgate
 
-[Comgate](https://www.comgate.cz/) payment provider for **Medusa v2**. Comgate is a Czech payment gateway (cards, Apple Pay / Google Pay, Czech & Slovak bank buttons, Twisto, etc).
+This plugin is a [Comgate](https://www.comgate.cz/) payment provider for **Medusa v2**. Comgate is a Czech payment gateway. It accepts cards, Apple Pay, Google Pay, Czech and Slovak bank buttons, Twisto and other methods.
 
-> **Disclaimer:** This is an unofficial, community-built integration. It is **not affiliated with, endorsed by, or maintained by Comgate Payments, a.s.** "Comgate" and the Comgate logo are trademarks of their respective owner, used here only to identify the payment gateway this plugin integrates with.
+> **Disclaimer:** This plugin is an unofficial integration from the community. **Comgate Payments, a.s. does not own, approve or maintain it.** "Comgate" and the Comgate logo are trademarks of their owner. This document uses them only to identify the payment gateway.
 
 [npm](https://www.npmjs.com/package/medusa-plugin-comgate) | [Medusa integrations listing](https://medusajs.com/integrations/medusa-plugin-comgate) | [Comgate API docs](https://apidoc.comgate.cz/en/) | [Medusa Payment Module](https://docs.medusajs.com/resources/commerce-modules/payment)
 
 ## Features
 
-- Redirect (background / `prepareOnly`) checkout flow.
-- Optional pre-authorization mode (reserve now, capture later).
-- Capture, cancel, refund from the admin dashboard.
-- Background notification (webhook) handling via Medusa's `/hooks/payment/comgate_*` endpoint.
+- Checkout with a redirect to the Comgate gateway (background create with `prepareOnly`).
+- Optional pre-authorization mode. The gateway reserves the amount now, and you capture it later.
+- Capture, cancel and refund from the admin dashboard.
+- The plugin receives PUSH notifications (the webhook) at the Medusa endpoint `/hooks/payment/comgate_*`.
 
 ## Install
 
@@ -63,23 +63,29 @@ module.exports = defineConfig({
 
 | Option           | Required | Default | Description |
 |------------------|----------|---------|-------------|
-| `merchant`       | yes      | —       | Comgate e-shop identifier. |
-| `secret`         | yes      | —       | Password for background communication. |
+| `merchant`       | yes      | —       | The e-shop identifier in Comgate. |
+| `secret`         | yes      | —       | The password for server-to-server calls. |
 | `test`           | no       | `true`  | Test mode. |
-| `preauth`        | no       | `false` | Create pre-authorizations; capture later. |
-| `lang`           | no       | `cs`    | Gateway / e-mail language (ISO 639-1). |
-| `country`        | no       | `ALL`   | Payer country (ISO 3166-1). |
-| `label`          | no       | `Order` | Statement label, 1–16 chars. |
-| `method`         | no       | `ALL`   | Payment method, or `ALL` to let the payer choose. |
-| `url_paid` / `url_cancelled` / `url_pending` | no | — | Return URLs. See note below — bake your own order id into them. |
-| `base_url`       | no       | `https://payments.comgate.cz` | API base url (the `/v2.0` version prefix is part of each path). Point it at an IPv4 relay if your host egresses over IPv6 — Comgate whitelists IPv4 only and answers `1400` otherwise. |
-| `proxy_key`      | no       | —       | Shared secret for the relay behind `base_url`, sent as `X-Proxy-Key` on every API call. Leave unset when calling Comgate directly. |
+| `preauth`        | no       | `false` | Create pre-authorizations. You capture them later. |
+| `lang`           | no       | `cs`    | The language of the gateway and the e-mails (ISO 639-1). |
+| `country`        | no       | `ALL`   | The country of the payer (ISO 3166-1). |
+| `label`          | no       | `Order` | The label on the bank statement, 1–16 characters. |
+| `method`         | no       | `ALL`   | The payment method. `ALL` lets the payer select the method. |
+| `url_paid` / `url_cancelled` / `url_pending` | no | — | Return URLs. Put your own order ID in them. Refer to the note below. |
+| `base_url`       | no       | `https://payments.comgate.cz` | The API base URL. Each path includes the `/v2.0` prefix. Comgate accepts only IPv4 addresses on its allow list and returns `1400` for other calls. If your host sends requests over IPv6, set this to an IPv4 relay. |
+| `proxy_key`      | no       | —       | The shared secret of the relay in `base_url`. The plugin sends it as the `X-Proxy-Key` header on each API call. Do not set it if you call Comgate directly. |
 
-Each attempt times out after 15 s. Network errors (no HTTP response) are retried up to 4 attempts with 1 s / 2 s / 3 s backoff, so a relay waking from auto-suspend does not fail the call. Refunds and pre-auth captures retry only when the connection was never established (refused, DNS, connect timeout) — a drop mid-request may already have moved money, so it is surfaced instead. A request that got any HTTP response is never retried. Credentials (`secret`, the Basic token, `proxy_key`) are redacted from every thrown or logged message.
+**Retries and credentials:**
+
+- Each try stops after 15 s.
+- If a network error occurs and no HTTP response comes back, the plugin tries the call again. It makes up to 4 tries and waits 1 s, 2 s and 3 s between them. Thus a relay that starts after an auto-suspend does not cause a failure.
+- Refunds and pre-auth captures try again only if the connection did not open (refused, DNS error, connect timeout). If the connection stops during a request, the money can already be moved. In that case, the plugin returns the error.
+- The plugin does not try a request again if an HTTP response came back.
+- The plugin removes the credentials (`secret`, the Basic token, `proxy_key`) from all errors and log messages.
 
 ## Pre-authorization
 
-To run both a direct-capture and a pre-auth provider, register the module twice with different `id`s and `options.preauth`:
+You can use a direct-capture provider and a pre-auth provider together. To do this, register the module two times with a different `id` and `options.preauth`:
 
 ```ts
 providers: [
@@ -88,32 +94,33 @@ providers: [
 ]
 ```
 
-The provider id used in the storefront / API is `pp_comgate_comgate` (and `pp_comgate-preauth_comgate-preauth`).
+The storefront and the API use the provider ID `pp_comgate_comgate`. The pre-auth provider ID is `pp_comgate-preauth_comgate-preauth`.
 
 ## How it works
 
-Uses the Comgate **REST v2.0 JSON API** (`https://payments.comgate.cz/v2.0/...`, HTTP Basic auth).
+The plugin uses the Comgate **REST v2.0 JSON API** (`https://payments.comgate.cz/v2.0/...`) with HTTP Basic authentication.
 
-1. **`initiatePayment`** → `POST /v2.0/payment.json`. Returns `data.redirect` — send the payer there. The Medusa payment session id is passed as Comgate `refId`.
+1. **`initiatePayment`** → `POST /v2.0/payment.json`. The response has `data.redirect`. Send the payer to this URL. The plugin sends the ID of the Medusa payment session as the Comgate `refId`.
 2. The payer pays on the Comgate gateway.
-3. **Webhook** → Comgate POSTs a background notification (JSON or form-encoded) to `/hooks/payment/comgate_comgate`. `getWebhookActionAndData`:
-   - rejects a present-but-wrong `secret` (constant-time compare);
-   - takes the **canonical** status, price, currency and `refId` from `GET /v2.0/payment/transId/{id}.json`, not from the PUSH body. If that API is unreachable it falls back to the PUSH body **only** when its `secret` verified; otherwise it does nothing;
-   - requires Comgate's `refId` to equal the PUSH `refId` (the Medusa payment session id), and the session's stored `transId` to be absent or equal to the PUSH `transId`;
-   - requires the canonical price and currency to equal the session's amount and currency (anti-tamper);
-   - maps `PAID → captured`, `AUTHORIZED → authorized`, `CANCELLED → failed`, `PENDING → pending`, with `amount` converted from Comgate minor units to Medusa's decimal.
-   Any failed check returns `not_supported` (no state change) and logs an error. Medusa ignores `failed`, so a late `CANCELLED` after `PAID` changes nothing, and a repeated `PAID` is a no-op capture.
-4. **`capturePayment`** → no-op for direct capture (already `PAID`); `PUT /v2.0/preauth/transId/{id}.json` in pre-auth mode.
-5. **`updatePayment`** → if the amount or currency changes, the plugin cancels the old Comgate payment and creates a new payment with the same `refId`. Comgate cannot change the amount of a payment.
-6. **`refundPayment`** → `POST /v2.0/refund.json`, sending the `test` flag the payment was created with (a mismatch is Comgate error 1402). **`cancelPayment`** → `DELETE /v2.0/payment/transId/{id}.json` (storno, PENDING only) or `DELETE /v2.0/preauth/transId/{id}.json` in pre-auth mode.
+3. **Webhook** → Comgate sends a PUSH notification (JSON or form-encoded) to `/hooks/payment/comgate_comgate`. `getWebhookActionAndData` does these checks:
+   - If the PUSH notification has a `secret`, the `secret` must be correct. The plugin compares it in constant time.
+   - The plugin gets the **canonical** status, price, currency and `refId` from `GET /v2.0/payment/transId/{id}.json`. It does not use these values from the PUSH body. If this API is not available, the plugin uses the PUSH body **only** if its `secret` is correct. In all other conditions, it does nothing.
+   - The Comgate `refId` must be equal to the PUSH `refId` (the ID of the Medusa payment session). The `transId` stored on the payment session must be empty or equal to the PUSH `transId`.
+   - The canonical price and currency must be equal to the amount and currency of the payment session (anti-tamper check).
+   - The plugin maps `PAID → captured`, `AUTHORIZED → authorized`, `CANCELLED → failed` and `PENDING → pending`. It converts `amount` from Comgate minor units to the Medusa decimal value.
 
-> Per Comgate's spec, order fulfillment must be driven by the **background notification**, not the payer's browser redirect, since redirect params are user-controlled. Comgate retries the PUSH up to 1000× until it gets a 2xx — Medusa's webhook handling is idempotent.
+   If a check fails, the plugin returns `not_supported` and logs an error. The payment does not change. Medusa ignores `failed`, so a late `CANCELLED` after `PAID` changes nothing. A second `PAID` does not capture again.
+4. **`capturePayment`** → For direct capture, this step does nothing because the payment is already `PAID`. In pre-auth mode, the plugin calls `PUT /v2.0/preauth/transId/{id}.json`.
+5. **`updatePayment`** → Comgate cannot change the amount of a payment. If the amount or currency changes, the plugin cancels the old Comgate payment. Then it creates a new payment with the same `refId`.
+6. **`refundPayment`** → `POST /v2.0/refund.json`. The plugin sends the `test` flag of the original payment. If the flags are different, Comgate returns error 1402. **`cancelPayment`** → `DELETE /v2.0/payment/transId/{id}.json` (storno, only for PENDING). In pre-auth mode, the plugin calls `DELETE /v2.0/preauth/transId/{id}.json`.
 
-> Comgate authenticates the PUSH by echoing the merchant `secret` in the body (no HMAC header). Restrict the webhook to Comgate's IP ranges (`https://payments.comgate.cz/ips-v4`) as a first layer; the secret check is the second.
+> The Comgate specification requires that the **PUSH notification** controls order fulfillment. The browser redirect of the payer must not control it, because the payer can change the redirect parameters. Comgate sends the PUSH notification again, up to 1000 times, until it gets a 2xx response. The webhook in Medusa is idempotent.
+
+> Comgate authenticates the PUSH notification with the merchant `secret` in the body. It does not send an HMAC header. As the first layer of protection, accept webhook calls only from the Comgate IP ranges (`https://payments.comgate.cz/ips-v4`). The `secret` check is the second layer.
 
 ## Comgate Client Portal setup
 
-In the [Client Portal](https://portal.comgate.cz/) → *Integrace → Nastavení obchodů → Přidat propojení obchodu*:
+Go to the [Client Portal](https://portal.comgate.cz/) → *Integrace → Nastavení obchodů → Přidat propojení obchodu*. Set these fields:
 
 | Field (CS) | Field (EN) | Value |
 |---|---|---|
@@ -125,13 +132,19 @@ In the [Client Portal](https://portal.comgate.cz/) → *Integrace → Nastavení
 | Url nevyřízený | Pending redirect | storefront "payment processing" page |
 | Povolené IP adresy / Povolit všechny IP | Allowed IPs | your backend's egress IP, or allow-all |
 
-**The PUSH URL is mandatory** — without it payments never confirm in Medusa. When you save the connection, the portal probes the PUSH URL with a `GET`; the plugin answers `200` on that path (Medusa's own webhook route is `POST`-only), so the check passes. The three redirect URLs are browser-facing only and **non-authoritative** (the payer can forge their params); never mark an order paid from them. Order state is driven solely by the PUSH webhook.
+**You must set the PUSH URL.** Without it, Medusa never gets the payment confirmation.
+
+When you save the connection, the portal sends a `GET` request to the PUSH URL. The Medusa webhook route accepts only `POST`. Thus the plugin returns `200` for `GET` on that path, and the portal check passes.
+
+The three redirect URLs are only for the browser. They are **not authoritative**, because the payer can change their parameters. Do not mark an order as paid from a redirect. Only the PUSH notification changes the order state.
 
 ### Storefront redirect URLs (Medusa Next.js starter)
 
-The return page must know which order it is. Comgate supports `${id}` (Comgate transId) and `${refId}` (your reference) placeholders, **case-sensitive** — but only in the **Comgate client-portal** return-URL fields, where Comgate substitutes them at redirect time. The API `url_paid` / `url_cancelled` / `url_pending` request fields are used **verbatim** (no substitution, no params appended), so if you set the URLs via the API you must bake the identifier in yourself.
+The return page must identify the order. Comgate supports the placeholders `${id}` (the Comgate transId) and `${refId}` (your reference). The placeholders are **case-sensitive**. Comgate replaces them only in the return-URL fields of the **Comgate client portal**, at the time of the redirect.
 
-Portal (recommended — Comgate substitutes the placeholders):
+Comgate uses the API fields `url_paid`, `url_cancelled` and `url_pending` **verbatim**. It does not replace placeholders and does not add parameters. If you set the URLs through the API, you must put the identifier in the URL yourself.
+
+Portal (recommended, Comgate replaces the placeholders):
 
 ```
 Paid:      https://<storefront>/${countryCode}/order/confirmed?state=paid&id=${id}&refId=${refId}
@@ -139,19 +152,19 @@ Cancelled: https://<storefront>/${countryCode}/cart?state=cancelled&id=${id}&ref
 Pending:   https://<storefront>/${countryCode}/order/pending?state=pending&id=${id}&refId=${refId}
 ```
 
-API options (verbatim — bake in your own id):
+API options (verbatim, put in your own ID):
 
 ```
 url_paid: https://<storefront>/${countryCode}/order/confirmed?refId=<order-id>
 ```
 
-`refId` is the Medusa payment session id. The return page reads it and looks the order up. The redirect is non-authoritative regardless — the storefront must re-query order/payment status server-side before showing "paid".
+`refId` is the ID of the Medusa payment session. The return page reads it and finds the order. The redirect is never authoritative. Before the storefront shows "paid", it must get the order or payment status again on the server.
 
-> **Web/Mobile Checkout SDK** checkboxes: leave **off**. This provider uses Comgate's hosted redirect flow, not the embedded checkout SDKs.
+> Do **not** select the **Web/Mobile Checkout SDK** checkboxes. This provider uses the hosted redirect flow of Comgate. It does not use the embedded checkout SDKs.
 
 ## Configure the webhook
 
-In the Comgate portal set the **background-notification URL** ("Url pro předání výsledku platby") to:
+In the Comgate portal, set the **PUSH notification URL** ("Url pro předání výsledku platby") to:
 
 ```
 https://<your-backend>/hooks/payment/comgate_comgate
@@ -166,22 +179,31 @@ bun run test       # jest unit tests (mocked fetch)
 bun run check      # format + lint + typecheck + test (what CI runs)
 ```
 
-Formatting and linting use [oxc](https://oxc.rs/): `bun run format` writes,
-`bun run lint` checks. `lefthook` runs format/lint checks on staged files
-pre-commit and typecheck/test pre-push — the hooks only *check*, they never
-rewrite files mid-commit. If the format check fails, run `bun run format` and
-re-stage.
+The format and lint tools are from [oxc](https://oxc.rs/). `bun run format` changes the files. `bun run lint` only checks them.
 
-Live smoke test against the Comgate v2.0 test API (no Medusa backend needed):
+`lefthook` runs the format and lint checks on staged files before each commit. It runs the typecheck and the tests before each push. The hooks only *check* files. They do not change files during a commit.
+
+If the format check fails:
+
+1. Run `bun run format`.
+2. Stage the files again.
+
+To do a live smoke test against the Comgate v2.0 test API, run this command. You do not need a Medusa backend.
 
 ```bash
 COMGATE_MERCHANT=xxxx COMGATE_SECRET=xxxx bun run smoke
 ```
 
-It creates a test payment and prints the `redirect` URL — open it and pay with a Comgate test card to see the status flip to `PAID`. Your IP must be allowed on the shop link (portal → *Povolené IP adresy* / *Povolit všechny IP*).
+The command creates a test payment and shows the `redirect` URL.
+
+1. Open the `redirect` URL.
+2. Pay with a Comgate test card.
+3. Make sure that the status changes to `PAID`.
+
+The shop connection must allow your IP address (portal → *Povolené IP adresy* / *Povolit všechny IP*).
 
 ## License
 
 MIT
 
-This project is an independent, unofficial integration and is not affiliated with or endorsed by Comgate Payments, a.s. All Comgate trademarks and logos are the property of their respective owner.
+This project is an independent, unofficial integration. Comgate Payments, a.s. does not own or approve it. All Comgate trademarks and logos are the property of their owner.
