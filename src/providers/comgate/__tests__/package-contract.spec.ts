@@ -25,7 +25,9 @@ describe("package contract", () => {
 	it("ships the built plugin output", () => {
 		// `.medusa/server` is what the exports map points at; dropping it from
 		// `files` publishes a package that resolves to nothing.
-		expect(pkg.files).toEqual(expect.arrayContaining(["dist", ".medusa/server"]))
+		expect(pkg.files).toContain(".medusa/server")
+		// `dist` is an old tsc output that nothing loads; it must not ship.
+		expect(pkg.files).not.toContain("dist")
 	})
 
 	it("stays installable on any Medusa 2.x host", () => {
