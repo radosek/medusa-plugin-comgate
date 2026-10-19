@@ -80,8 +80,9 @@ export class ComgateClient {
 
 	/** POST /v2.0/payment.json — create a background payment, returns transId + redirect. */
 	async create(req: CreatePaymentRequest): Promise<CreatePaymentResponse> {
-		// Without prepareOnly a server-to-server create 302-redirects to an error page
-		// instead of returning `{ code: 0, transId, redirect }`.
+		// Required by the legacy HTTP API (otherwise create 302-redirects to an error
+		// page). v2.0 does not document it and behaves the same either way; sent to
+		// match the integration proven in production.
 		const body = await this.request("POST", "/v2.0/payment.json", { ...req, prepareOnly: true })
 		this.assertOk("create", body)
 		return body as unknown as CreatePaymentResponse
