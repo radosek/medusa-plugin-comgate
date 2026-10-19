@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Package contents.** The package does not include the `dist` folder. Before, an old local `dist` build went into the package (0.2.3). Medusa loads the plugin only from `.medusa/server`.
+- **Scripts.** `build` and `watch` use the Medusa plugin build. The `rimraf` dev dependency is removed.
+
 ## 0.2.4
 
 - **Canonical status.** The webhook gets the status, price, currency and `refId` from the Comgate status API. It does not use these values from the PUSH body.

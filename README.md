@@ -161,7 +161,7 @@ https://<your-backend>/hooks/payment/comgate_comgate
 
 ```bash
 bun install        # also installs the git hooks (lefthook)
-bun run build      # tsc -> dist
+bun run build      # medusa plugin:build -> .medusa/server
 bun run test       # jest unit tests (mocked fetch)
 bun run check      # format + lint + typecheck + test (what CI runs)
 ```
