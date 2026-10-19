@@ -2,16 +2,26 @@
 
 ## 0.2.4
 
-- **Webhook takes the canonical status from Comgate.** `getWebhookActionAndData` no longer trusts `status`/`price` from the PUSH body; it calls the status API for the `transId`. If that API is unreachable the body is used only when its `secret` verified; otherwise the notification is a no-op.
-- **Fix: webhook `amount` was in minor units.** Medusa captures with `data.amount` as a decimal, so a PAID notification for 100 CZK asked to capture 10000. It is now divided by 100.
-- **Anti-tamper.** The canonical price and currency must match the payment session's amount and currency, Comgate's `refId` must match the PUSH `refId`, and the session's stored `transId` must be absent or match. Any mismatch is a no-op with an error log. A wrong `secret` is now also a no-op (was `failed`).
-- Form-encoded PUSH bodies are parsed as well as JSON.
-- **New `proxy_key` option**, sent as `X-Proxy-Key` on every call, for an IPv4 relay set as `base_url`.
-- Network errors are retried up to 4 attempts with backoff; HTTP responses never are. Refunds and pre-auth captures retry only connect-phase failures, so a dropped response cannot refund or capture twice. Each attempt times out after 15 s.
-- `prepareOnly: true` is sent on create, matching the production pcsmash integration. Not listed in the v2.0 docs; verified on 2026-10-19 that v2.0 creates the payment identically with or without it.
-- **Fix: refunds reuse the payment's own `test` flag** (stored on the session at initiate) instead of the current config, avoiding Comgate 1402. Sessions created before 0.2.4 fall back to the config value.
-- Credentials (`secret`, Basic token, `proxy_key`) are redacted from every thrown and logged message.
-- Tested against Medusa 2.21.2; dev dependencies bumped from 2.19.0.
+- **Canonical status.** The webhook gets the status, price, currency and `refId` from the Comgate status API. It does not use these values from the PUSH body.
+  - If the status API is not available, the webhook uses the PUSH body only if the body has the correct `secret`.
+  - In all other conditions, the webhook does not change the payment.
+- **Fix: webhook amount.** Comgate sends amounts in minor units. Medusa captures `data.amount` as a decimal value. Before, a PAID notification for 100 CZK captured 10000. The plugin now divides the amount by 100.
+- **Anti-tamper checks.** The webhook does not change the payment if one of these checks fails. It logs an error.
+  - The Comgate price and currency must be equal to the amount and currency of the payment session.
+  - The Comgate `refId` must be equal to the `refId` in the PUSH body.
+  - The `transId` stored on the session must be empty or equal to the PUSH `transId`.
+  - A wrong `secret` now gives no change (before: `failed`).
+- **Form-encoded PUSH.** The webhook reads form-encoded bodies and JSON bodies.
+- **New option `proxy_key`.** The plugin sends it as the `X-Proxy-Key` header on each API call. Use it with an IPv4 relay set in `base_url`.
+- **Retries.**
+  - The plugin tries a call up to 4 times if a network error occurs. The wait between tries is 1 s, 2 s and 3 s.
+  - The plugin does not try a call again if Comgate sent an HTTP response.
+  - Refund and pre-auth capture try again only if the connection did not open. This prevents a second refund or capture.
+  - Each try stops after 15 s.
+- **`prepareOnly`.** The plugin sends `prepareOnly: true` when it creates a payment. The pcsmash production integration also sent it. The v2.0 documentation does not list it. A test on 2026-10-19 showed that v2.0 creates the payment with or without it.
+- **Fix: refund test flag.** A refund uses the `test` flag of the original payment. Before, it used the current configuration, and Comgate returned error 1402. Sessions from before 0.2.4 use the configuration value.
+- **Credentials.** The plugin removes the `secret`, the Basic token and `proxy_key` from all error messages and logs.
+- **Tests.** The plugin is tested with Medusa 2.21.2. The dev dependencies changed from 2.19.0.
 
 ## 0.2.3
 
