@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.4
+
+- **Canonical status.** The webhook gets the status, price, currency and `refId` from the Comgate status API. It does not use these values from the PUSH body.
+  - If the status API is not available, the webhook uses the PUSH body only if the body has the correct `secret`.
+  - In all other conditions, the webhook does not change the payment.
+- **Fix: webhook amount.** Comgate sends amounts in minor units. Medusa captures `data.amount` as a decimal value. Before, a PAID notification for 100 CZK captured 10000. The plugin now divides the amount by 100.
+- **Anti-tamper checks.** The webhook does not change the payment if one of these checks fails. It logs an error.
+  - The Comgate price and currency must be equal to the amount and currency of the payment session.
+  - The Comgate `refId` must be equal to the `refId` in the PUSH body.
+  - The `transId` stored on the session must be empty or equal to the PUSH `transId`.
+  - A wrong `secret` now gives no change (before: `failed`).
+- **Form-encoded PUSH.** The webhook reads form-encoded bodies and JSON bodies.
+- **New option `proxy_key`.** The plugin sends it as the `X-Proxy-Key` header on each API call. Use it with an IPv4 relay set in `base_url`.
+- **Retries.**
+  - The plugin tries a call up to 4 times if a network error occurs. The wait between tries is 1 s, 2 s and 3 s.
+  - The plugin does not try a call again if Comgate sent an HTTP response.
+  - Refund and pre-auth capture try again only if the connection did not open. This prevents a second refund or capture.
+  - Each try stops after 15 s.
+- **`prepareOnly`.** The plugin sends `prepareOnly: true` when it creates a payment. The pcsmash production integration also sent it. The v2.0 documentation does not list it. A test on 2026-10-19 showed that v2.0 creates the payment with or without it.
+- **Fix: refund test flag.** A refund uses the `test` flag of the original payment. Before, it used the current configuration, and Comgate returned error 1402. Sessions from before 0.2.4 use the configuration value.
+- **Amount change after create.** Comgate cannot change the amount of a payment. If the cart total or currency changes, `updatePayment` cancels the old Comgate payment and creates a new payment with the same `refId`. Before, the payer paid the old amount.
+- **`retrievePayment`.** The plugin adds only the live `status` to the session data. It does not replace the stored `price` and `test` values with strings.
+- **Credentials.** The plugin removes the `secret`, the Basic token and `proxy_key` from all error messages and logs.
+- **Tests.** The plugin is tested with Medusa 2.21.2. The dev dependencies changed from 2.19.0.
+
 ## 0.2.3
 
 - `GET /hooks/payment/comgate_comgate` answers `200` so the Comgate portal's URL probe (a GET) does not report the PUSH URL as unreachable. Notifications are still handled by Medusa's POST route.

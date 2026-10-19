@@ -8,6 +8,21 @@ import type {
 } from "../types"
 
 const DEFAULT_BASE_URL = "https://payments.comgate.cz"
+const MAX_ATTEMPTS = 4
+const ATTEMPT_TIMEOUT_MS = 15_000
+// Errors raised before any byte of the request reached the server.
+const CONNECT_ERROR_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT"])
+
+/**
+ * `any` retries every thrown network error. `connect` retries only errors proving
+ * the request was never sent — for calls where a repeat would move money twice.
+ */
+type RetryMode = "any" | "connect"
+
+function isConnectError(e: unknown): boolean {
+	const code = (e as { cause?: { code?: string } })?.cause?.code
+	return code !== undefined && CONNECT_ERROR_CODES.has(code)
+}
 
 export class ComgateError extends Error {
 	code: number
@@ -17,6 +32,20 @@ export class ComgateError extends Error {
 		this.code = code
 	}
 }
+
+/**
+ * The request never produced a Comgate answer: the socket failed on every attempt,
+ * or a relay in front of Comgate answered with a non-Comgate error. Distinct from
+ * `ComgateError`, which carries a code Comgate itself returned.
+ */
+export class ComgateUnreachableError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = "ComgateUnreachableError"
+	}
+}
+
+type ClientOptions = Pick<ComgateOptions, "merchant" | "secret" | "base_url" | "proxy_key">
 
 /**
  * Client for the Comgate REST v2.0 JSON API.
@@ -29,16 +58,32 @@ export class ComgateClient {
 	private readonly secret: string
 	private readonly baseUrl: string
 	private readonly authHeader: string
+	private readonly proxyKey?: string
+	private readonly sleep: (ms: number) => Promise<void>
 
-	constructor(options: Pick<ComgateOptions, "merchant" | "secret" | "base_url">) {
+	constructor(options: ClientOptions, sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))) {
 		this.secret = options.secret
 		this.baseUrl = (options.base_url ?? DEFAULT_BASE_URL).replace(/\/$/, "")
 		this.authHeader = "Basic " + Buffer.from(`${options.merchant}:${options.secret}`).toString("base64")
+		this.proxyKey = options.proxy_key
+		this.sleep = sleep
+	}
+
+	/** Replace every credential this client knows with `[REDACTED]`. */
+	redact(text: string): string {
+		let out = text
+		for (const s of [this.secret, this.authHeader.slice(6), this.proxyKey]) {
+			if (s) out = out.split(s).join("[REDACTED]")
+		}
+		return out
 	}
 
 	/** POST /v2.0/payment.json — create a background payment, returns transId + redirect. */
 	async create(req: CreatePaymentRequest): Promise<CreatePaymentResponse> {
-		const body = await this.request("POST", "/v2.0/payment.json", { ...req })
+		// Required by the legacy HTTP API (otherwise create 302-redirects to an error
+		// page). v2.0 does not document it and behaves the same either way; sent to
+		// match the integration proven in production.
+		const body = await this.request("POST", "/v2.0/payment.json", { ...req, prepareOnly: true })
 		this.assertOk("create", body)
 		return body as unknown as CreatePaymentResponse
 	}
@@ -59,7 +104,7 @@ export class ComgateClient {
 
 	/** POST /v2.0/refund.json — refund a PAID payment, full or partial. */
 	async refund(transId: string, amount: number, test: boolean, refId?: string): Promise<CodeMessageResponse> {
-		const body = await this.request("POST", "/v2.0/refund.json", { transId, amount, test, refId })
+		const body = await this.request("POST", "/v2.0/refund.json", { transId, amount, test, refId }, "connect")
 		this.assertOk("refund", body)
 		return body as unknown as CodeMessageResponse
 	}
@@ -70,6 +115,7 @@ export class ComgateClient {
 			"PUT",
 			`/v2.0/preauth/transId/${encodeURIComponent(transId)}.json`,
 			amount != null ? { amount } : {},
+			"connect",
 		)
 		this.assertOk("capturePreauth", body)
 		return body as unknown as CodeMessageResponse
@@ -98,25 +144,64 @@ export class ComgateClient {
 		method: string,
 		path: string,
 		body?: Record<string, unknown>,
+		retry: RetryMode = "any",
 	): Promise<Record<string, unknown>> {
 		const headers: Record<string, string> = { Authorization: this.authHeader }
+		if (this.proxyKey) headers["X-Proxy-Key"] = this.proxyKey
 		let payload: string | undefined
 		if (body !== undefined) {
 			headers["Content-Type"] = "application/json"
 			payload = JSON.stringify(stripUndefined(body))
 		}
 
-		const response = await fetch(`${this.baseUrl}${path}`, { method, headers, body: payload })
+		// The IPv4 relay auto-suspends when idle and drops the first socket while it
+		// wakes, so thrown network errors are retried with backoff. Any HTTP response
+		// (e.g. a 1400 for a non-whitelisted IP) is final and never retried.
+		let response: Response | undefined
+		let lastError = ""
+		for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+			// oxlint-disable-next-line no-await-in-loop -- retries are sequential by design
+			if (attempt > 0) await this.sleep(1000 * attempt)
+			try {
+				// oxlint-disable-next-line no-await-in-loop
+				response = await fetch(`${this.baseUrl}${path}`, {
+					method,
+					headers,
+					body: payload,
+					signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
+				})
+				break
+			} catch (e) {
+				lastError = String((e as Error)?.message ?? e)
+				if (retry === "connect" && !isConnectError(e)) break
+			}
+		}
+		if (!response) {
+			throw new ComgateUnreachableError(this.redact(`Comgate ${path} unreachable: ${lastError}`))
+		}
 
-		const text = await response.text()
+		let text: string
+		try {
+			text = await response.text()
+		} catch (e) {
+			throw new ComgateUnreachableError(
+				this.redact(`Comgate ${path} response body failed: ${String((e as Error)?.message ?? e)}`),
+			)
+		}
 		let parsed: Record<string, unknown>
 		try {
 			parsed = text ? JSON.parse(text) : {}
 		} catch {
-			throw new ComgateError(path, response.status, `non-JSON response: ${text.slice(0, 200)}`)
+			throw new ComgateUnreachableError(
+				this.redact(`Comgate ${path} returned non-JSON HTTP ${response.status}: ${text.slice(0, 200)}`),
+			)
 		}
 		if (!response.ok && parsed.code === undefined) {
-			throw new ComgateError(path, response.status, parsed.message ? String(parsed.message) : "HTTP error")
+			throw new ComgateUnreachableError(
+				this.redact(
+					`Comgate ${path} failed with HTTP ${response.status}: ${parsed.message ? String(parsed.message) : "no Comgate code"}`,
+				),
+			)
 		}
 		return parsed
 	}
@@ -124,7 +209,7 @@ export class ComgateClient {
 	private assertOk(action: string, body: Record<string, unknown>): void {
 		const code = Number(body.code)
 		if (code !== 0) {
-			throw new ComgateError(action, code, String(body.message ?? "unknown error"))
+			throw new ComgateError(action, code, this.redact(String(body.message ?? "unknown error")))
 		}
 	}
 }
